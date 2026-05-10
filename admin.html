@@ -445,17 +445,26 @@ html[data-dark="1"] #loginPreview{
 /* ── Share Modal ── */
 #shareModal{display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.55);align-items:center;justify-content:center}
 #shareModal.open{display:flex}
-.share-modal-box{background:#fff;border-radius:16px;padding:28px 28px 22px;width:min(560px,96vw);max-height:90vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,.3);animation:mopen .22s ease}
-@keyframes mopen{from{transform:scale(.92);opacity:0}to{transform:scale(1);opacity:1}}
-html[data-dark="1"] .share-modal-box{background:#1e293b;color:#f1f5f9}
-.share-modal-title{font-size:17px;font-weight:800;color:#1a365d;margin-bottom:4px}
-html[data-dark="1"] .share-modal-title{color:#93c5fd}
-.share-modal-close{float:right;background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);line-height:1;padding:0 4px}
-.share-modal-close:hover{color:var(--text)}
-.share-qr-wrap{text-align:center;margin:14px 0 10px}
-.share-url-box{background:var(--bg);border:2px solid var(--primary-border);border-radius:8px;padding:9px 13px;font-size:11px;font-family:var(--mono);word-break:break-all;cursor:pointer;color:var(--primary);line-height:1.6;margin-top:10px}
-.share-url-box:hover{background:var(--primary-light)}
-.share-status{font-size:12px;color:var(--muted);margin-top:6px;min-height:18px}
+.smod-box{background:#fff;border-radius:16px;padding:26px 26px 20px;width:min(520px,96vw);max-height:92vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,.35);animation:smodin .2s ease}
+@keyframes smodin{from{transform:scale(.9);opacity:0}to{transform:scale(1);opacity:1}}
+html[data-dark="1"] .smod-box{background:#1e293b;color:#f1f5f9}
+.smod-hdr{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px}
+.smod-title{font-size:17px;font-weight:800;color:#1a365d}
+html[data-dark="1"] .smod-title{color:#93c5fd}
+.smod-close{background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);padding:0 4px;line-height:1}
+.smod-close:hover{color:var(--text)}
+.smod-body{display:flex;gap:16px;flex-wrap:wrap}
+.smod-qr{flex-shrink:0;text-align:center}
+.smod-qr-box{width:180px;height:180px;border:1px solid var(--border);border-radius:10px;background:#f8fafc;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--muted)}
+.smod-right{flex:1;min-width:200px}
+.smod-url{background:var(--bg);border:2px solid var(--primary-border);border-radius:8px;padding:8px 12px;font-size:11px;font-family:var(--mono);word-break:break-all;cursor:pointer;color:var(--primary);line-height:1.6;margin-top:8px;display:none}
+.smod-url:hover{background:var(--primary-light)}
+html[data-dark="1"] .smod-url{background:#0f172a;color:#93c5fd}
+.smod-status{font-size:12px;color:var(--muted);margin-top:6px;min-height:16px}
+.smod-info{font-size:12px;color:var(--muted);margin-top:6px}
+.smod-warn{font-size:11px;color:#e53e3e;margin-top:8px;font-weight:600}
+.smod-copied{font-size:12px;color:#38a169;font-weight:600;margin-top:4px;display:none}
+
 </style>
 </head>
 <body>
@@ -472,7 +481,7 @@ html[data-dark="1"] .share-modal-title{color:#93c5fd}
       <button class="nav-btn" data-tab="disp" onclick="goTab('disp')">📺 投影顯示</button>
     </nav>
     <button class="nav-btn" id="themeBtn" onclick="toggleTheme()" title="深色/淺色切換" style="margin-left:6px;font-size:16px;padding:6px 10px">🌙</button>
-    <button class="nav-btn" onclick="openShareModal()" title="分享連結 / QR Code" style="margin-left:2px;background:rgba(255,255,255,.18);font-weight:700">📲 分享</button>
+    <button class="nav-btn" onclick="openShareModal()" style="margin-left:4px;background:rgba(255,255,255,.18);font-weight:700;letter-spacing:.3px">📲 分享</button>
   </div>
 
 <!-- ── 跑馬燈播報列 ── -->
@@ -730,26 +739,31 @@ html[data-dark="1"] .share-modal-title{color:#93c5fd}
 </div>
 
 
-<!-- ════════════ 分享 Modal ════════════ -->
+<!-- ════════════ 📲 分享 Modal ════════════ -->
 <div id="shareModal" onclick="if(event.target===this)closeShareModal()">
-  <div class="share-modal-box">
-    <button class="share-modal-close" onclick="closeShareModal()">✕</button>
-    <div class="share-modal-title">📲 手機分享 QR Code</div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">學生掃描即可直接進入服務台</div>
-    <div style="display:flex;gap:14px;flex-wrap:wrap">
-      <div class="share-qr-wrap" style="flex-shrink:0">
-        <div id="shareQrImg" style="width:180px;height:180px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:8px;background:#f8fafc;font-size:13px;color:var(--muted)">按下方按鈕產生</div>
+  <div class="smod-box">
+    <div class="smod-hdr">
+      <div>
+        <div class="smod-title">📲 手機分享 QR Code</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">學生掃描後直接進入服務台</div>
+      </div>
+      <button class="smod-close" onclick="closeShareModal()">✕</button>
+    </div>
+    <div class="smod-body">
+      <div class="smod-qr">
+        <div class="smod-qr-box" id="smodQrWrap">按右側按鈕產生</div>
         <div style="font-size:11px;color:var(--muted);margin-top:5px">手機掃一掃</div>
       </div>
-      <div style="flex:1;min-width:200px">
-        <button class="btn btn-primary" style="width:100%;margin-bottom:10px" onclick="genShareLink()">🔗 產生短網址 &amp; QR Code</button>
-        <div id="shareUrlBox" class="share-url-box" onclick="copyShareUrl()" title="點擊複製" style="display:none">—</div>
-        <div id="shareStatus" class="share-status"></div>
-        <div id="copyMsg" style="font-size:12px;color:#38a169;margin-top:4px;display:none;font-weight:600">✓ 已複製！</div>
-        <div id="shareInfo" style="font-size:12px;color:var(--muted);margin-top:6px"></div>
-        <div style="font-size:11px;color:#e53e3e;margin-top:6px;font-weight:600">⚠️ 修改設定後請重新產生</div>
+      <div class="smod-right">
+        <button class="btn btn-primary" style="width:100%" onclick="genShareLink()">🔗 產生短網址 &amp; QR Code</button>
+        <div class="smod-url" id="shareUrlBox" onclick="copyShareUrl()" title="點擊複製">—</div>
+        <div class="smod-copied" id="copyMsg">✓ 已複製！</div>
+        <div class="smod-status" id="shareStatus"></div>
+        <div class="smod-info" id="shareInfo"></div>
+        <div class="smod-warn">⚠️ 修改設定後請重新產生</div>
       </div>
     </div>
+    <!-- hidden canvas for fallback -->
     <canvas id="qrCanvas" style="display:none"></canvas>
   </div>
 </div>
@@ -1468,111 +1482,104 @@ function toggleTheme(){
 // ══════════════════════════════════════════════════
 //  SHARE LINK (QR Code + LZString 壓縮)
 // ══════════════════════════════════════════════════
-/* ── Modal helpers ── */
-function openShareModal(){
-  document.getElementById('shareModal').classList.add('open');
-}
-function closeShareModal(){
-  document.getElementById('shareModal').classList.remove('open');
-}
-document.addEventListener('keydown',e=>{if(e.key==='Escape')closeShareModal();});
+// ── Modal ────────────────────────────────────────────────────────
+function openShareModal(){ document.getElementById('shareModal').classList.add('open'); }
+function closeShareModal(){ document.getElementById('shareModal').classList.remove('open'); }
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeShareModal(); });
 
-/* ── Share Link: short URL + QR ── */
+// ── Share Link: shrtco.de 短網址 → qrserver.com QR img ──────────
 async function genShareLink(){
   load();
-  if(!S.students.length){toast('請先匯入學生名單','err');return;}
-  if(!S.companies.length){toast('請先匯入廠商名單','err');return;}
+  if(!S.students.length){ toast('請先匯入學生名單','err'); return; }
+  if(!S.companies.length){ toast('請先匯入廠商名單','err'); return; }
 
-  const payload={
-    stage:S.stage||1,
-    students:S.students,
+  const payload = {
+    stage:    S.stage || 1,
+    students: S.students,
     companies:S.companies,
-    preSched:S.preSched||{},
-    cfg:{
-      voice:!!(S.cfg&&S.cfg.voice),
-      repeat:(S.cfg&&S.cfg.repeat)||2,
-      rate:(S.cfg&&S.cfg.rate)||0.85,
-      vUri:(S.cfg&&S.cfg.vUri)||''
+    preSched: S.preSched || {},
+    cfg: {
+      voice:  !!(S.cfg && S.cfg.voice),
+      repeat: (S.cfg && S.cfg.repeat) || 2,
+      rate:   (S.cfg && S.cfg.rate)   || 0.85,
+      vUri:   (S.cfg && S.cfg.vUri)   || ''
     }
   };
+
   let encoded;
-  try{encoded=LZString.compressToEncodedURIComponent(JSON.stringify(payload));}
-  catch(e){toast('壓縮失敗','err');return;}
+  try { encoded = LZString.compressToEncodedURIComponent(JSON.stringify(payload)); }
+  catch(e){ toast('壓縮失敗','err'); return; }
 
-  const base=location.origin+location.pathname.replace(/[^/]*$/,'');
-  const longUrl=base+'service.html#ims_init='+encoded;
+  const base    = location.origin + location.pathname.replace(/[^/]*$/, '');
+  const longUrl = base + 'service.html#ims_init=' + encoded;
 
-  const statusEl=document.getElementById('shareStatus');
-  const qrWrap=document.getElementById('shareQrImg');
-  const urlBox=document.getElementById('shareUrlBox');
-  const infoEl=document.getElementById('shareInfo');
+  const statusEl = document.getElementById('shareStatus');
+  const qrWrap   = document.getElementById('smodQrWrap');
+  const urlBox   = document.getElementById('shareUrlBox');
+  const infoEl   = document.getElementById('shareInfo');
 
-  statusEl.textContent='⏳ 正在縮短網址…';
-  urlBox.style.display='none';
-  qrWrap.innerHTML='<span style="font-size:13px;color:var(--muted)">產生中…</span>';
+  statusEl.textContent = '⏳ 正在縮短網址…';
+  urlBox.style.display = 'none';
+  qrWrap.innerHTML = '<span style="font-size:12px;color:var(--muted)">產生中…</span>';
 
-  let shortUrl=null;
-  try{
-    const resp=await fetch('https://api.shrtco.de/v2/shorten?url='+encodeURIComponent(longUrl));
-    const data=await resp.json();
-    if(data.ok){
-      shortUrl=data.result.full_short_link;
-    }
-  }catch(err){
-    console.warn('shrtco.de failed:',err);
-  }
+  // 嘗試 shrtco.de → 失敗 fallback tinyurl
+  let shortUrl = null;
+  try {
+    const r = await fetch('https://api.shrtco.de/v2/shorten?url=' + encodeURIComponent(longUrl));
+    const d = await r.json();
+    if(d.ok) shortUrl = d.result.full_short_link;
+  } catch(e) { console.warn('shrtco.de failed:', e); }
 
-  // Fallback: try tinyurl
   if(!shortUrl){
-    try{
-      const resp2=await fetch('https://tinyurl.com/api-create.php?url='+encodeURIComponent(longUrl));
-      if(resp2.ok){
-        const txt=await resp2.text();
-        if(txt.startsWith('http'))shortUrl=txt.trim();
-      }
-    }catch(err2){console.warn('tinyurl failed:',err2);}
+    try {
+      const r2 = await fetch('https://tinyurl.com/api-create.php?url=' + encodeURIComponent(longUrl));
+      if(r2.ok){ const t = await r2.text(); if(t.startsWith('http')) shortUrl = t.trim(); }
+    } catch(e2){ console.warn('tinyurl failed:', e2); }
   }
 
-  const finalUrl=shortUrl||longUrl;
-  statusEl.textContent=shortUrl?'✅ 短網址產生成功！':'⚠️ 短網址服務無法使用，使用原始連結（QR Code 可能較密）';
+  const finalUrl = shortUrl || longUrl;
+  statusEl.textContent = shortUrl
+    ? '✅ 短網址產生成功！QR Code 易於掃描'
+    : '⚠️ 短網址服務不可用，使用原始連結（QR Code 較密）';
 
-  // qrserver.com produces QR as img, no CORS issue
-  const qrSize=200;
-  const qrSrc='https://api.qrserver.com/v1/create-qr-code/?size='+qrSize+'x'+qrSize+'&data='+encodeURIComponent(finalUrl)+'&ecc=L&margin=2';
-  qrWrap.innerHTML=`<img src="${qrSrc}" width="${qrSize}" height="${qrSize}" style="border-radius:6px;display:block" alt="QR Code" onerror="this.parentNode.textContent='QR Code 載入失敗，請複製連結'">`;
+  // qrserver.com — img 標籤，無 CORS 問題
+  const sz = 180;
+  qrWrap.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=${sz}x${sz}&data=${encodeURIComponent(finalUrl)}&ecc=L&margin=2"
+    width="${sz}" height="${sz}" style="border-radius:8px;display:block"
+    onerror="this.parentNode.textContent='QR Code 載入失敗，請複製連結使用'">`;
 
-  urlBox.textContent=finalUrl;
-  urlBox.style.display='block';
+  urlBox.textContent = finalUrl;
+  urlBox.style.display = 'block';
 
-  const psKeys=Object.keys(payload.preSched||{});
-  const psInfo=psKeys.length?`${psKeys.length} 間廠商已設定預排名單`:'⚠️ 尚未設定預排名單';
-  infoEl.innerHTML=`📦 <strong>${payload.students.length}</strong> 位學生 ／ <strong>${payload.companies.length}</strong> 間廠商 ／ ${psInfo}`;
+  const psKeys = Object.keys(payload.preSched || {});
+  const psInfo = psKeys.length ? `${psKeys.length} 間廠商已設定預排名單` : '⚠️ 尚未設定預排名單';
+  infoEl.innerHTML = `📦 <strong>${payload.students.length}</strong> 位學生 ／ `
+    + `<strong>${payload.companies.length}</strong> 間廠商 ／ ${psInfo}`;
 
   toast('分享連結已產生 ✓','ok');
 }
 
 function copyShareUrl(){
-  const url=(document.getElementById('shareUrlBox').textContent||'').trim();
-  if(!url||url==='—')return;
-  const showCopied=()=>{
-    const msg=document.getElementById('copyMsg');
-    msg.style.display='block';
-    setTimeout(()=>{msg.style.display='none';},2500);
+  const url = (document.getElementById('shareUrlBox').textContent || '').trim();
+  if(!url || url === '—') return;
+  const showCopied = () => {
+    const el = document.getElementById('copyMsg');
+    el.style.display = 'block';
+    setTimeout(() => { el.style.display = 'none'; }, 2500);
   };
-  if(navigator.clipboard&&navigator.clipboard.writeText)
-    navigator.clipboard.writeText(url).then(showCopied).catch(()=>fallbackCopy(url,showCopied));
-  else fallbackCopy(url,showCopied);
+  if(navigator.clipboard && navigator.clipboard.writeText)
+    navigator.clipboard.writeText(url).then(showCopied).catch(() => fallbackCopy(url, showCopied));
+  else fallbackCopy(url, showCopied);
 }
 
-
-
-function fallbackCopy(text,cb){
-  const el=document.createElement('textarea');
-  el.value=text;el.style.cssText='position:fixed;opacity:0;top:0;left:0';
-  document.body.appendChild(el);el.select();
-  try{document.execCommand('copy');cb();}catch{}
+function fallbackCopy(text, cb){
+  const el = document.createElement('textarea');
+  el.value = text; el.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+  document.body.appendChild(el); el.select();
+  try{ document.execCommand('copy'); cb(); }catch{}
   document.body.removeChild(el);
 }
+
 
 renderAll();
 loadVoiceUI();
