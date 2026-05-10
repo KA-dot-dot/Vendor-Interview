@@ -7,10 +7,6 @@
 <meta name="color-scheme" content="only light">
 <script>(function(){const t=localStorage.getItem("ims_theme")||"0";document.documentElement.setAttribute("data-dark",t==="1"?"1":"0");})();</script>
 <title>媒合面試系統 — 管理端</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <style>
 :root{
   color-scheme:only light;
@@ -443,7 +439,6 @@ html[data-dark="1"] code,
 html[data-dark="1"] #loginPreview{
   color:#111827!important;
 }
-
 /* ── Share Modal ── */
 #shareModal{display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.55);align-items:center;justify-content:center}
 #shareModal.open{display:flex}
@@ -466,8 +461,9 @@ html[data-dark="1"] .smod-url{background:#0f172a;color:#93c5fd}
 .smod-info{font-size:12px;color:var(--muted);margin-top:6px}
 .smod-warn{font-size:11px;color:#e53e3e;margin-top:8px;font-weight:600}
 .smod-copied{font-size:12px;color:#38a169;font-weight:600;margin-top:4px;display:none}
-
 </style>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 </head>
 <body>
 
@@ -481,9 +477,9 @@ html[data-dark="1"] .smod-url{background:#0f172a;color:#93c5fd}
       <button class="nav-btn" data-tab="mgmt" onclick="goTab('mgmt')">🎯 面試管理</button>
       <button class="nav-btn" data-tab="voice" onclick="goTab('voice')">⚙️ 設定</button>
       <button class="nav-btn" data-tab="disp" onclick="goTab('disp')">📺 投影顯示</button>
+      <button class="nav-btn" onclick="openShareModal()" style="margin-left:4px;background:rgba(255,255,255,.18);font-weight:700;letter-spacing:.3px">📲 分享</button>
     </nav>
     <button class="nav-btn" id="themeBtn" onclick="toggleTheme()" title="深色/淺色切換" style="margin-left:6px;font-size:16px;padding:6px 10px">🌙</button>
-    <button class="nav-btn" onclick="openShareModal()" style="margin-left:4px;background:rgba(255,255,255,.18);font-weight:700;letter-spacing:.3px">📲 分享</button>
   </div>
 
 <!-- ── 跑馬燈播報列 ── -->
@@ -493,7 +489,6 @@ html[data-dark="1"] .smod-url{background:#0f172a;color:#93c5fd}
     <div class="mq-inner" id="mqGInner"><span id="mqGA"></span><span id="mqGB"></span></div>
   </div>
 </div>
-
 
 <!-- ────────── 學生廠商 ────────── -->
 <div class="panel on wrap" id="panel-import">
@@ -547,7 +542,7 @@ html[data-dark="1"] .smod-url{background:#0f172a;color:#93c5fd}
     ⚠️ 匯入學生/廠商後請至「預排名單」頁設定各廠商可面試的學生範圍，服務台才能正常操作。
   </div>
   <div class="alert alert-info" style="margin-top:8px">
-    💡 <strong>使用說明：</strong>設定完學生、廠商與預排名單後，點擊上方「產生 QR Code 與連結」，學生用手機掃描即可直接使用服務台，不需同一台電腦。
+    💡 <strong>跨裝置使用說明：</strong>兩個 HTML 檔須放在同一資料夾。可在檔案所在目錄執行 <code>python -m http.server 8080</code>，同網路裝置皆可用 <code>http://電腦IP:8080/service.html</code> 連線。
   </div>
 </div>
 
@@ -740,36 +735,6 @@ html[data-dark="1"] .smod-url{background:#0f172a;color:#93c5fd}
   </div>
 </div>
 
-
-<!-- ════════════ 📲 分享 Modal ════════════ -->
-<div id="shareModal" onclick="if(event.target===this)closeShareModal()">
-  <div class="smod-box">
-    <div class="smod-hdr">
-      <div>
-        <div class="smod-title">📲 手機分享 QR Code</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:2px">學生掃描後直接進入服務台</div>
-      </div>
-      <button class="smod-close" onclick="closeShareModal()">✕</button>
-    </div>
-    <div class="smod-body">
-      <div class="smod-qr">
-        <div class="smod-qr-box" id="smodQrWrap">按右側按鈕產生</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:5px">手機掃一掃</div>
-      </div>
-      <div class="smod-right">
-        <button class="btn btn-primary" style="width:100%" onclick="genShareLink()">🔗 產生短網址 &amp; QR Code</button>
-        <div class="smod-url" id="shareUrlBox" onclick="copyShareUrl()" title="點擊複製">—</div>
-        <div class="smod-copied" id="copyMsg">✓ 已複製！</div>
-        <div class="smod-status" id="shareStatus"></div>
-        <div class="smod-info" id="shareInfo"></div>
-        <div class="smod-warn">⚠️ 修改設定後請重新產生</div>
-      </div>
-    </div>
-    <!-- hidden canvas for fallback -->
-    <canvas id="qrCanvas" style="display:none"></canvas>
-  </div>
-</div>
-
 <div id="toasts"></div>
 
 <script>
@@ -778,6 +743,77 @@ html[data-dark="1"] .smod-url{background:#0f172a;color:#93c5fd}
 // ══════════════════════════════════════════════════
 const KEY = 'ims_state_v2';
 const BC  = new BroadcastChannel('ims_bc_v2');
+
+// ── Firebase 跨裝置即時同步 ────────────────────────────────────────
+const FIREBASE_CONFIG = (() => {
+  try { const r = localStorage.getItem('firebase_config_v1'); if(r) return JSON.parse(r); } catch(e) {}
+  return {
+    apiKey:            "AIzaSyBVyKP-j7_CP3SRf8h3TYhZXLQuTdx0YQ0",
+    authDomain:        "project-4198352826191193750.firebaseapp.com",
+    databaseURL:       "https://project-4198352826191193750-default-rtdb.firebaseio.com",
+    projectId:         "project-4198352826191193750",
+    storageBucket:     "project-4198352826191193750.firebasestorage.app",
+    messagingSenderId: "221540560321",
+    appId:             "1:221540560321:web:8239153fe386e089b29340"
+  };
+})();
+
+let db = null;
+let fbRoom = null;
+
+function initFirebase() {
+  try {
+    if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+    db = firebase.database();
+    return true;
+  } catch(e) { console.warn('Firebase init failed:', e); return false; }
+}
+
+function computeRoomKey() {
+  const raw = (S.students || []).map(s => s.id).join(',')
+            + '|' + (S.companies || []).map(c => c.id).join(',');
+  let h = 5381;
+  for (let i = 0; i < raw.length; i++) { h = ((h << 5) + h) ^ raw.charCodeAt(i); h >>>= 0; }
+  return 'ims_' + h.toString(16).padStart(8, '0');
+}
+
+// 管理端：監聽 Firebase（讓服務台的操作即時反映到投影顯示）
+let fbStateRef = null;
+let fbStateListener = null;
+function fbStartListen() {
+  if (!db) return;
+  if (!fbRoom && S.students.length) fbRoom = computeRoomKey();
+  if (!fbRoom) return;
+  if (fbStateListener) { fbStateRef.off('value', fbStateListener); }
+  fbStateRef = db.ref(fbRoom + '/state');
+  fbStateListener = fbStateRef.on('value', snap => {
+    const remote = snap.val();
+    if (!remote || !remote.ts) return;
+    if (remote.ts <= (S.ts || 0)) return;
+    S.statuses = remote.statuses || S.statuses;
+    S.log      = remote.log      || S.log;
+    S.anns     = remote.anns     || S.anns;
+    S.stage    = remote.stage    || S.stage;
+    S.ts       = remote.ts;
+    try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e) {}
+    renderAll(); processAnns();
+  });
+}
+
+// 管理端寫入 Firebase，讓服務台跨裝置即時收到
+function fbSaveState() {
+  if (!db) return;
+  if (!fbRoom && S.students.length) fbRoom = computeRoomKey();
+  if (!fbRoom) return;
+  const payload = {
+    statuses: S.statuses || {},
+    log:  (S.log  || []).slice(0, 60),
+    anns: (S.anns || []).slice(-60),
+    stage: S.stage || 1,
+    ts: Date.now()
+  };
+  db.ref(fbRoom + '/state').set(payload).catch(e => console.warn('fbSave error:', e));
+}
 
 let S   = null;   // shared state
 let VQ  = [];     // voice queue
@@ -816,6 +852,7 @@ function save(){
   S.ts=Date.now();
   localStorage.setItem(KEY,JSON.stringify(S));
   try{BC.postMessage('u');}catch{}
+  fbSaveState();  // 寫入 Firebase，服務台跨裝置即時同步
 }
 
 // ══════════════════════════════════════════════════
@@ -886,6 +923,8 @@ function importSt(){
   });
   S.students.sort((a,b)=>a.id.localeCompare(b.id,undefined,{numeric:true}));
   save();renderImport();renderMgmt();renderDispGrid();
+  // 學生名單確定後，重新建立 Firebase room（room key 依學生+廠商 id 計算）
+  if(db){ fbRoom = computeRoomKey(); fbStartListen(); }
   toast(`匯入 ${n} 位新學生（共 ${S.students.length} 位）`,'ok');
 }
 function importStCsv(inp){
@@ -934,6 +973,8 @@ function importCo(){
     S.companies.push(co);idMap.set(id,co);nameMap.set(name,co);added++;
   });
   save();renderImport();renderMgmt();renderDispGrid();renderPsSummary();
+  // 廠商名單確定後，重新建立 Firebase room
+  if(db){ fbRoom = computeRoomKey(); fbStartListen(); }
   toast(`匯入 ${added} 家新廠商，更新 ${updated} 家（共 ${S.companies.length} 家）`,'ok');
 }
 function importCoCsv(inp){
@@ -1102,7 +1143,7 @@ function annContent(a){
   return null;
 }
 
-// 頁面重整後從已完成公告重建 ANN_LIST，確保投影媒合資訊卡不消失
+// 頁面重整後從 S.anns 已完成的公告重建 ANN_LIST，確保投影資訊卡不消失
 function rebuildAnnList(){
   ANN_LIST.length=0;
   if(!S||!S.anns)return;
@@ -1499,123 +1540,12 @@ function toggleTheme(){
 }
 
 // ══════════════════════════════════════════════════
-//  SHARE LINK (QR Code + Firebase room key)
+//  INIT
 // ══════════════════════════════════════════════════
-// ── Firebase 初始化（admin 專用）────────────────────────────────
-const ADMIN_FB_CONFIG = {
-  apiKey:            "AIzaSyBVyKP-j7_CP3SRf8h3TYhZXLQuTdx0YQ0",
-  authDomain:        "project-4198352826191193750.firebaseapp.com",
-  databaseURL:       "https://project-4198352826191193750-default-rtdb.firebaseio.com",
-  projectId:         "project-4198352826191193750",
-  storageBucket:     "project-4198352826191193750.firebasestorage.app",
-  messagingSenderId: "221540560321",
-  appId:             "1:221540560321:web:8239153fe386e089b29340"
-};
-let adminDb = null;
-function getAdminDb(){
-  if(adminDb) return adminDb;
-  try{
-    const app = firebase.apps.length ? firebase.app() : firebase.initializeApp(ADMIN_FB_CONFIG);
-    adminDb = firebase.database(app);
-  }catch(e){ console.warn('admin firebase init failed',e); }
-  return adminDb;
-}
-
-// ── Modal ────────────────────────────────────────────────────────
-function openShareModal(){ document.getElementById('shareModal').classList.add('open'); }
-function closeShareModal(){ document.getElementById('shareModal').classList.remove('open'); }
-document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeShareModal(); });
-
-// ── Share Link: 資料存 Firebase，QR Code 含短 room key ──────────
-async function genShareLink(){
-  load();
-  if(!S.students.length){ toast('請先匯入學生名單','err'); return; }
-  if(!S.companies.length){ toast('請先匯入廠商名單','err'); return; }
-
-  const payload = {
-    stage:    S.stage || 1,
-    students: S.students,
-    companies:S.companies,
-    preSched: S.preSched || {},
-    cfg: {
-      voice:  !!(S.cfg && S.cfg.voice),
-      repeat: (S.cfg && S.cfg.repeat) || 2,
-      rate:   (S.cfg && S.cfg.rate)   || 0.85,
-      vUri:   (S.cfg && S.cfg.vUri)   || ''
-    }
-  };
-
-  const statusEl = document.getElementById('shareStatus');
-  const qrWrap   = document.getElementById('smodQrWrap');
-  const urlBox   = document.getElementById('shareUrlBox');
-  const infoEl   = document.getElementById('shareInfo');
-
-  statusEl.textContent = '⏳ 正在上傳資料到雲端…';
-  urlBox.style.display = 'none';
-  qrWrap.innerHTML = '<span style="font-size:12px;color:var(--muted)">產生中…</span>';
-
-  // 產生 8 碼 room key 並上傳到 Firebase
-  const key = Math.random().toString(36).slice(2,6) + Math.random().toString(36).slice(2,6);
-  const roomPath = 'ims_qr_init/' + key;
-
-  const db = getAdminDb();
-  if(!db){ toast('Firebase 連線失敗，請檢查網路','err'); return; }
-
-  try{
-    await db.ref(roomPath).set({ payload: JSON.stringify(payload), ts: Date.now() });
-    // 24小時後自動清除
-    setTimeout(()=>{ try{ db.ref(roomPath).remove(); }catch{} }, 86400000);
-  }catch(e){
-    statusEl.textContent = '❌ 雲端上傳失敗：' + e.message;
-    toast('上傳失敗','err');
-    return;
-  }
-
-  const base    = location.origin + location.pathname.replace(/[^/]*$/, '');
-  const finalUrl = base + 'index.html?room=' + key;
-
-  statusEl.textContent = '✅ 雲端連結產生成功！QR Code 清晰易掃';
-
-  // qrserver.com — img 標籤，無 CORS 問題
-  const sz = 180;
-  qrWrap.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=${sz}x${sz}&data=${encodeURIComponent(finalUrl)}&ecc=M&margin=2"
-    width="${sz}" height="${sz}" style="border-radius:8px;display:block"
-    onerror="this.parentNode.textContent='QR Code 載入失敗，請複製連結使用'">`;
-
-  urlBox.textContent = finalUrl;
-  urlBox.style.display = 'block';
-
-  const psKeys = Object.keys(payload.preSched || {});
-  const psInfo = psKeys.length ? `${psKeys.length} 間廠商已設定預排名單` : '⚠️ 尚未設定預排名單';
-  infoEl.innerHTML = `📦 <strong>${payload.students.length}</strong> 位學生 ／ `
-    + `<strong>${payload.companies.length}</strong> 間廠商 ／ ${psInfo}`;
-
-  toast('分享連結已產生 ✓','ok');
-}
-
-function copyShareUrl(){
-  const url = (document.getElementById('shareUrlBox').textContent || '').trim();
-  if(!url || url === '—') return;
-  const showCopied = () => {
-    const el = document.getElementById('copyMsg');
-    el.style.display = 'block';
-    setTimeout(() => { el.style.display = 'none'; }, 2500);
-  };
-  if(navigator.clipboard && navigator.clipboard.writeText)
-    navigator.clipboard.writeText(url).then(showCopied).catch(() => fallbackCopy(url, showCopied));
-  else fallbackCopy(url, showCopied);
-}
-
-function fallbackCopy(text, cb){
-  const el = document.createElement('textarea');
-  el.value = text; el.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
-  document.body.appendChild(el); el.select();
-  try{ document.execCommand('copy'); cb(); }catch{}
-  document.body.removeChild(el);
-}
-
-
-rebuildAnnList();   // 頁面重整後恢復投影公告卡
+load();
+initFirebase();   // 連接 Firebase
+if(db && S.students.length){ fbRoom = computeRoomKey(); fbStartListen(); }
+rebuildAnnList(); // 頁面重整後恢復投影公告卡
 renderAll();
 loadVoiceUI();
 // Sync theme button
@@ -1679,6 +1609,124 @@ window.addEventListener('resize',()=>{
   if(document.fullscreenElement||document.webkitFullscreenElement)
     requestAnimationFrame(fitDispGrid);
 });
+
+// ══════════════════════════════════════════════════
+//  SHARE LINK (QR Code + Firebase room key)
+// ══════════════════════════════════════════════════
+function openShareModal(){ document.getElementById('shareModal').classList.add('open'); }
+function closeShareModal(){ document.getElementById('shareModal').classList.remove('open'); }
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeShareModal(); });
+
+async function genShareLink(){
+  load();
+  if(!S.students.length){ toast('請先匯入學生名單','err'); return; }
+  if(!S.companies.length){ toast('請先匯入廠商名單','err'); return; }
+
+  const payload = {
+    stage:    S.stage || 1,
+    students: S.students,
+    companies:S.companies,
+    preSched: S.preSched || {},
+    cfg: {
+      voice:  !!(S.cfg && S.cfg.voice),
+      repeat: (S.cfg && S.cfg.repeat) || 2,
+      rate:   (S.cfg && S.cfg.rate)   || 0.85,
+      vUri:   (S.cfg && S.cfg.vUri)   || ''
+    }
+  };
+
+  const statusEl = document.getElementById('shareStatus');
+  const qrWrap   = document.getElementById('smodQrWrap');
+  const urlBox   = document.getElementById('shareUrlBox');
+  const infoEl   = document.getElementById('shareInfo');
+
+  statusEl.textContent = '⏳ 正在上傳資料到雲端…';
+  urlBox.style.display = 'none';
+  qrWrap.innerHTML = '<span style="font-size:12px;color:var(--muted)">產生中…</span>';
+
+  const key = Math.random().toString(36).slice(2,6) + Math.random().toString(36).slice(2,6);
+  const roomPath = 'ims_qr_init/' + key;
+
+  if(!db){ toast('Firebase 連線失敗，請檢查網路','err'); return; }
+
+  try{
+    await db.ref(roomPath).set({ payload: JSON.stringify(payload), ts: Date.now() });
+    setTimeout(()=>{ try{ db.ref(roomPath).remove(); }catch{} }, 86400000);
+  }catch(e){
+    statusEl.textContent = '❌ 雲端上傳失敗：' + e.message;
+    toast('上傳失敗','err');
+    return;
+  }
+
+  const base     = location.origin + location.pathname.replace(/[^/]*$/, '');
+  const finalUrl = base + 'service.html?room=' + key;
+
+  statusEl.textContent = '✅ 雲端連結產生成功！QR Code 清晰易掃';
+
+  const sz = 180;
+  qrWrap.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=${sz}x${sz}&data=${encodeURIComponent(finalUrl)}&ecc=M&margin=2"
+    width="${sz}" height="${sz}" style="border-radius:8px;display:block"
+    onerror="this.parentNode.textContent='QR Code 載入失敗，請複製連結使用'">`;
+
+  urlBox.textContent = finalUrl;
+  urlBox.style.display = 'block';
+
+  const psKeys = Object.keys(payload.preSched || {});
+  const psInfo = psKeys.length ? `${psKeys.length} 間廠商已設定預排名單` : '⚠️ 尚未設定預排名單';
+  infoEl.innerHTML = `📦 <strong>${payload.students.length}</strong> 位學生 ／ `
+    + `<strong>${payload.companies.length}</strong> 間廠商 ／ ${psInfo}`;
+
+  toast('分享連結已產生 ✓','ok');
+}
+
+function copyShareUrl(){
+  const url = (document.getElementById('shareUrlBox').textContent || '').trim();
+  if(!url || url === '—') return;
+  const showCopied = () => {
+    const el = document.getElementById('copyMsg');
+    el.style.display = 'block';
+    setTimeout(() => { el.style.display = 'none'; }, 2500);
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText)
+    navigator.clipboard.writeText(url).then(showCopied).catch(() => fallbackCopy(url, showCopied));
+  else fallbackCopy(url, showCopied);
+}
+
+function fallbackCopy(text, cb){
+  const el = document.createElement('textarea');
+  el.value = text; el.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+  document.body.appendChild(el); el.select();
+  try{ document.execCommand('copy'); cb(); }catch{}
+  document.body.removeChild(el);
+}
 </script>
+
+<!-- ════════════ 📲 分享 Modal ════════════ -->
+<div id="shareModal" onclick="if(event.target===this)closeShareModal()">
+  <div class="smod-box">
+    <div class="smod-hdr">
+      <div>
+        <div class="smod-title">📲 手機分享 QR Code</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">學生掃描後直接進入服務台</div>
+      </div>
+      <button class="smod-close" onclick="closeShareModal()">✕</button>
+    </div>
+    <div class="smod-body">
+      <div class="smod-qr">
+        <div class="smod-qr-box" id="smodQrWrap">按右側按鈕產生</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:5px">手機掃一掃</div>
+      </div>
+      <div class="smod-right">
+        <button class="btn btn-primary" style="width:100%" onclick="genShareLink()">🔗 產生短網址 &amp; QR Code</button>
+        <div class="smod-url" id="shareUrlBox" onclick="copyShareUrl()" title="點擊複製">—</div>
+        <div class="smod-copied" id="copyMsg">✓ 已複製！</div>
+        <div class="smod-status" id="shareStatus"></div>
+        <div class="smod-info" id="shareInfo"></div>
+        <div class="smod-warn">⚠️ 修改設定後請重新產生</div>
+      </div>
+    </div>
+    <canvas id="qrCanvas" style="display:none"></canvas>
+  </div>
+</div>
 </body>
 </html>
