@@ -9,6 +9,8 @@
 <title>媒合面試系統 — 管理端</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <style>
 :root{
   color-scheme:only light;
@@ -1480,14 +1482,34 @@ function toggleTheme(){
 }
 
 // ══════════════════════════════════════════════════
-//  SHARE LINK (QR Code + LZString 壓縮)
+//  SHARE LINK (QR Code + Firebase room key)
 // ══════════════════════════════════════════════════
+// ── Firebase 初始化（admin 專用）────────────────────────────────
+const ADMIN_FB_CONFIG = {
+  apiKey:            "AIzaSyBVyKP-j7_CP3SRf8h3TYhZXLQuTdx0YQ0",
+  authDomain:        "project-4198352826191193750.firebaseapp.com",
+  databaseURL:       "https://project-4198352826191193750-default-rtdb.firebaseio.com",
+  projectId:         "project-4198352826191193750",
+  storageBucket:     "project-4198352826191193750.firebasestorage.app",
+  messagingSenderId: "221540560321",
+  appId:             "1:221540560321:web:8239153fe386e089b29340"
+};
+let adminDb = null;
+function getAdminDb(){
+  if(adminDb) return adminDb;
+  try{
+    const app = firebase.apps.length ? firebase.app() : firebase.initializeApp(ADMIN_FB_CONFIG);
+    adminDb = firebase.database(app);
+  }catch(e){ console.warn('admin firebase init failed',e); }
+  return adminDb;
+}
+
 // ── Modal ────────────────────────────────────────────────────────
 function openShareModal(){ document.getElementById('shareModal').classList.add('open'); }
 function closeShareModal(){ document.getElementById('shareModal').classList.remove('open'); }
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeShareModal(); });
 
-// ── Share Link: shrtco.de 短網址 → qrserver.com QR img ──────────
+// ── Share Link: 資料存 Firebase，QR Code 含短 room key ──────────
 async function genShareLink(){
   load();
   if(!S.students.length){ toast('請先匯入學生名單','err'); return; }
@@ -1506,45 +1528,40 @@ async function genShareLink(){
     }
   };
 
-  let encoded;
-  try { encoded = LZString.compressToEncodedURIComponent(JSON.stringify(payload)); }
-  catch(e){ toast('壓縮失敗','err'); return; }
-
-  const base    = location.origin + location.pathname.replace(/[^/]*$/, '');
-  const longUrl = base + 'index.html?ims_init=' + encoded;
-
   const statusEl = document.getElementById('shareStatus');
   const qrWrap   = document.getElementById('smodQrWrap');
   const urlBox   = document.getElementById('shareUrlBox');
   const infoEl   = document.getElementById('shareInfo');
 
-  statusEl.textContent = '⏳ 正在縮短網址…';
+  statusEl.textContent = '⏳ 正在上傳資料到雲端…';
   urlBox.style.display = 'none';
   qrWrap.innerHTML = '<span style="font-size:12px;color:var(--muted)">產生中…</span>';
 
-  // 嘗試 shrtco.de → 失敗 fallback tinyurl
-  let shortUrl = null;
-  try {
-    const r = await fetch('https://api.shrtco.de/v2/shorten?url=' + encodeURIComponent(longUrl));
-    const d = await r.json();
-    if(d.ok) shortUrl = d.result.full_short_link;
-  } catch(e) { console.warn('shrtco.de failed:', e); }
+  // 產生 8 碼 room key 並上傳到 Firebase
+  const key = Math.random().toString(36).slice(2,6) + Math.random().toString(36).slice(2,6);
+  const roomPath = 'ims_qr_init/' + key;
 
-  if(!shortUrl){
-    try {
-      const r2 = await fetch('https://tinyurl.com/api-create.php?url=' + encodeURIComponent(longUrl));
-      if(r2.ok){ const t = await r2.text(); if(t.startsWith('http')) shortUrl = t.trim(); }
-    } catch(e2){ console.warn('tinyurl failed:', e2); }
+  const db = getAdminDb();
+  if(!db){ toast('Firebase 連線失敗，請檢查網路','err'); return; }
+
+  try{
+    await db.ref(roomPath).set({ payload: JSON.stringify(payload), ts: Date.now() });
+    // 24小時後自動清除
+    setTimeout(()=>{ try{ db.ref(roomPath).remove(); }catch{} }, 86400000);
+  }catch(e){
+    statusEl.textContent = '❌ 雲端上傳失敗：' + e.message;
+    toast('上傳失敗','err');
+    return;
   }
 
-  const finalUrl = shortUrl || longUrl;
-  statusEl.textContent = shortUrl
-    ? '✅ 短網址產生成功！QR Code 易於掃描'
-    : '⚠️ 短網址服務不可用，使用原始連結（QR Code 較密）';
+  const base    = location.origin + location.pathname.replace(/[^/]*$/, '');
+  const finalUrl = base + 'index.html?room=' + key;
+
+  statusEl.textContent = '✅ 雲端連結產生成功！QR Code 清晰易掃';
 
   // qrserver.com — img 標籤，無 CORS 問題
   const sz = 180;
-  qrWrap.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=${sz}x${sz}&data=${encodeURIComponent(finalUrl)}&ecc=L&margin=2"
+  qrWrap.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=${sz}x${sz}&data=${encodeURIComponent(finalUrl)}&ecc=M&margin=2"
     width="${sz}" height="${sz}" style="border-radius:8px;display:block"
     onerror="this.parentNode.textContent='QR Code 載入失敗，請複製連結使用'">`;
 
