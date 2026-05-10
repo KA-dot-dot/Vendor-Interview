@@ -510,18 +510,18 @@ function fbSaveState() {
   db.ref(fbRoom + '/state').set(payload).catch(e => console.warn('fbSave error:', e));
 }
 
-// ─── 座位鎖定（claimSeat）── 同 student.html 的 transaction 模式 ────
+// ─── 座位鎖定（claimSeat）── 同座號只能一台裝置登入 ────
 async function claimSeat(sid, cid) {
   if (!db || !fbRoom) {
     // 無 Firebase → 只用 sessionStorage 擋同瀏覽器多 tab
-    const sessKey = 'ims_lock_' + sid + '_' + cid;
+    const sessKey = 'ims_lock_' + sid;
     if (sessionStorage.getItem(sessKey) && sessionStorage.getItem(sessKey) !== tabId)
-      return { ok: false, reason: '此瀏覽器已有相同座號+廠商的分頁正在使用' };
+      return { ok: false, reason: '此座號已有分頁正在使用' };
     sessionStorage.setItem(sessKey, tabId);
     return { ok: true };
   }
 
-  const lockRef = db.ref(fbRoom + '/sessions/' + sid + '_' + cid);
+  const lockRef = db.ref(fbRoom + '/sessions/' + sid);  // 只用 sid，不含 cid
   const now = Date.now();
 
   const result = await lockRef.transaction(current => {
@@ -551,8 +551,8 @@ async function claimSeat(sid, cid) {
   if (!result.committed) {
     const snap = await lockRef.once('value');
     const val = snap.val();
-    const who = val ? `（${val.sid}號 × ${val.cid}，另一裝置使用中）` : '';
-    return { ok: false, reason: '此座號＋廠商組合已被另一裝置登入' + who + '，請等對方關閉視窗後再試' };
+    const who = val ? `（${val.sid}號 已在另一裝置登入）` : '';
+    return { ok: false, reason: '此座號已被另一裝置登入' + who + '，請等對方關閉視窗後再試' };
   }
 
   // 確認寫入成功
@@ -584,7 +584,7 @@ async function releaseSeat(sid, cid) {
   } catch(e) {}
   seatRef = null;
   // 也清除 sessionStorage fallback
-  if (sid && cid) sessionStorage.removeItem('ims_lock_' + sid + '_' + cid);
+  if (sid) sessionStorage.removeItem('ims_lock_' + sid);
 }
 
 function startSeatHeartbeat() {
@@ -1092,7 +1092,7 @@ initFirebase();   // 連接 Firebase（沿用 teacher.html 的專案）
 
 // 頁面關閉時自動釋放座位（Firebase onDisconnect 也會處理，這是雙保險）
 window.addEventListener('beforeunload', () => {
-  if(ME) releaseSeat(ME.id, ME.coId);
+  if(ME) releaseSeat(ME.id);
 });
 
 (function(){const t=document.documentElement.getAttribute('data-dark');const b=document.getElementById('themeBtn');if(b)b.textContent=t==='1'?'☀':'🌙';})();
