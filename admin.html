@@ -1,0 +1,1665 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="only light">
+<script>(function(){const t=localStorage.getItem("ims_theme")||"0";document.documentElement.setAttribute("data-dark",t==="1"?"1":"0");})();</script>
+<title>媒合面試系統 — 管理端</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<style>
+:root{
+  color-scheme:only light;
+  --bg:#f0f4f8;--surface:#fff;--border:#e2e8f0;--text:#1a202c;--muted:#718096;
+  --primary:#2b6cb0;--primary-light:#ebf4ff;--primary-border:#90cdf4;
+  --success:#276749;--success-light:#f0fff4;--success-border:#9ae6b4;
+  --warn:#744210;--warn-light:#fffbeb;--warn-border:#f6e05e;
+  --danger:#9b2c2c;--danger-light:#fff5f5;--danger-border:#feb2b2;
+  --purple:#553c9a;--purple-light:#faf5ff;--purple-border:#d6bcfa;
+  --radius:8px;--radius-lg:12px;
+  --font:-apple-system,'Microsoft JhengHei','PingFang TC','Noto Sans TC',sans-serif;
+  --mono:'Courier New',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0;color-scheme:only light}
+html,body{color-scheme:only light;background:#f0f4f8!important;background-image:linear-gradient(#f0f4f8,#f0f4f8)!important;min-height:100%}
+body{font-family:var(--font);background:var(--bg)!important;background-image:linear-gradient(var(--bg),var(--bg))!important;color:var(--text);font-size:14px;line-height:1.6;min-height:100vh}
+
+/* Header */
+.hdr{background:#1a365d;color:#fff;padding:0 20px;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.hdr-inner{display:flex;align-items:center;gap:16px;height:54px;max-width:1400px;margin:0 auto}
+.hdr-title{font-size:16px;font-weight:700;white-space:nowrap}
+.hdr-stage{background:#2b6cb0;font-size:12px;font-weight:600;padding:4px 12px;border-radius:20px;white-space:nowrap}
+.nav{display:flex;gap:2px;margin-left:auto;flex-wrap:wrap}
+.nav-btn{background:none;border:none;color:rgba(255,255,255,.7);padding:8px 14px;cursor:pointer;font:inherit;font-size:13px;border-radius:6px;transition:.15s}
+.nav-btn:hover{color:#fff;background:rgba(255,255,255,.12)}
+.nav-btn.on{color:#fff;background:rgba(255,255,255,.22);font-weight:600}
+
+/* Layout */
+.wrap{max-width:1400px;margin:0 auto;padding:20px}
+.panel{display:none}.panel.on{display:block}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+
+#panel-import > .two > .card + .card{margin-top:0}
+.co-limit-row{display:flex;align-items:center;gap:8px;width:100%}
+.co-limit-main{flex:1;min-width:0}
+.co-limit-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.co-limit-meta{font-size:11px;color:var(--muted);margin-top:2px}
+.co-limit-input{width:86px!important;padding:4px 6px!important;font-size:12px!important;text-align:center}
+/* Cards */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px}
+.card-title{font-size:14px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:6px}
+.card+.card{margin-top:14px}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border-radius:var(--radius);font:inherit;font-size:13px;font-weight:500;cursor:pointer;border:1px solid transparent;transition:.15s;white-space:nowrap;text-decoration:none}
+.btn:disabled{opacity:.45;cursor:default!important}
+.btn-primary{background:var(--primary);color:#fff;border-color:var(--primary)}.btn-primary:not(:disabled):hover{background:#2c5282}
+.btn-success{background:#38a169;color:#fff;border-color:#38a169}.btn-success:not(:disabled):hover{background:#2f855a}
+.btn-danger{background:#e53e3e;color:#fff;border-color:#e53e3e}.btn-danger:not(:disabled):hover{background:#c53030}
+.btn-warn{background:#d69e2e;color:#fff;border-color:#d69e2e}.btn-warn:not(:disabled):hover{background:#b7791f}
+.btn-ghost{background:#fff;color:var(--text);border-color:var(--border)}.btn-ghost:not(:disabled):hover{background:var(--bg)}
+.btn-sm{padding:4px 10px;font-size:12px}
+.btn-lg{padding:10px 22px;font-size:15px}
+
+/* Forms */
+input,select,textarea{border:1px solid var(--border);border-radius:var(--radius);padding:7px 10px;font:inherit;font-size:13px;color:var(--text);background:#fff;outline:none;width:100%;transition:.15s}
+input:focus,select:focus,textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(43,108,176,.12)}
+input[type=checkbox]{width:auto;cursor:pointer}
+textarea{resize:vertical;min-height:90px;font-family:var(--mono);font-size:12px}
+label.lbl{font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px;letter-spacing:.3px}
+.fg{margin-bottom:12px}
+.frow{display:flex;gap:8px;align-items:flex-end}.frow .fg{flex:1;margin-bottom:0}
+
+/* Badges */
+.badge{display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600}
+.b-blue{background:var(--primary-light);color:var(--primary);border:1px solid var(--primary-border)}
+.b-amber{background:var(--warn-light);color:var(--warn);border:1px solid var(--warn-border)}
+.b-green{background:var(--success-light);color:var(--success);border:1px solid var(--success-border)}
+.b-gray{background:#f7fafc;color:var(--muted);border:1px solid var(--border)}
+.b-purple{background:var(--purple-light);color:var(--purple);border:1px solid var(--purple-border)}
+
+/* Student cards — management grid */
+.sgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.scard{border:2px solid var(--border);border-radius:var(--radius-lg);padding:12px;transition:.2s;background:#fff}
+.scard.avail{border-color:var(--primary-border);background:var(--primary-light)}
+.scard.inter{border-color:var(--warn-border);background:var(--warn-light)}
+.scard.match{border-color:var(--success-border);background:var(--success-light);opacity:.85}
+.snum{font-size:30px;font-weight:800;font-family:var(--mono);background:transparent!important}
+.sname{font-size:12px;color:var(--muted);margin-top:1px;background:transparent!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sstat{font-size:11px;margin-top:4px;font-weight:500;background:transparent!important}
+.avail .snum{color:var(--primary)}.inter .snum{color:var(--warn)}.match .snum{color:var(--success)}
+.sact{display:flex;gap:5px;margin-top:8px}
+.sact .btn{flex:1;font-size:11px;padding:4px;justify-content:center}
+.sact select{font-size:11px;padding:3px 5px}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.5}}
+.scard.inter{animation:blink 2s infinite}
+
+/* Stats */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+.stat{background:#fff;border:1px solid var(--border);border-radius:var(--radius-lg);padding:12px 16px;text-align:center}
+.stat-n{font-size:26px;font-weight:800}
+.stat-l{font-size:11px;color:var(--muted);margin-top:2px;font-weight:500}
+
+/* Log */
+.log-box{max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);padding:8px}
+.log-row{display:flex;gap:10px;padding:4px 0;border-bottom:1px solid #f7fafc;font-size:12px}
+.log-row:last-child{border-bottom:none}
+.log-t{color:var(--muted);white-space:nowrap;font-family:var(--mono)}
+
+/* Announcement */
+.ann{border-radius:var(--radius-lg);padding:16px 20px;margin-bottom:16px;display:flex;align-items:flex-start;gap:14px;animation:slideD .35s ease;overflow:hidden;position:relative}
+.ann.interview{background:var(--warn-light);border:2px solid var(--warn-border)}
+.ann.match{background:var(--success-light);border:2px solid var(--success-border)}
+.ann.stage2{background:var(--primary-light);border:2px solid var(--primary-border)}
+.ann-icon{font-size:28px;line-height:1;flex-shrink:0}
+.ann-body{flex:1}
+.ann-title{font-size:17px;font-weight:700;margin-bottom:2px}
+.ann-sub{font-size:13px;color:var(--muted)}
+.ann-footer{display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap}
+.ann-remain{font-size:11px;font-weight:700;padding:2px 9px;border-radius:10px;background:rgba(0,0,0,.1)}
+.ann-skip{font-size:11px;cursor:pointer;text-decoration:underline;opacity:.7;background:none;border:none;color:inherit;font:inherit;padding:0}
+.ann-skip:hover{opacity:1}
+.ann-prog{position:absolute;bottom:0;left:0;width:100%;height:4px;background:rgba(0,0,0,.08)}
+.ann-prog-fill{height:100%;width:100%;background:rgba(0,0,0,.25);transition:none}
+@keyframes slideD{from{transform:translateY(-8px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+/* Stage banner */
+.stage-banner{background:linear-gradient(135deg,#1a365d,#2b6cb0);color:#fff;border-radius:var(--radius-lg);padding:18px 22px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
+.stage-title{font-size:13px;opacity:.8;margin-bottom:2px}
+.stage-num{font-size:32px;font-weight:900}
+
+/* Display panel */
+.disp-hdr{background:#0d1b2e;color:#fff;padding:14px 20px;display:flex;align-items:center;gap:16px;border-radius:var(--radius-lg) var(--radius-lg) 0 0;flex-wrap:wrap;gap:12px}
+.disp-stage{background:#2b6cb0;font-size:17px;font-weight:700;padding:6px 20px;border-radius:20px}
+.disp-stats{color:rgba(255,255,255,.75);font-size:14px}
+/* 欄數選擇器 */
+.disp-col-btn{font-size:11px;padding:3px 8px;background:rgba(255,255,255,.1);color:rgba(255,255,255,.7);border:1px solid rgba(255,255,255,.25);border-radius:5px;cursor:pointer;transition:.15s}
+.disp-col-btn:hover{background:rgba(255,255,255,.2)}
+.disp-col-btn.on{background:#2b6cb0;color:#fff;border-color:#4299e1}
+.disp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:12px;padding:16px;background:#f8fafc;border-radius:0 0 var(--radius-lg) var(--radius-lg);border:1px solid var(--border);border-top:none}
+.dcard{border:2px solid var(--border);border-radius:var(--radius-lg);padding:14px;text-align:center}
+.dcard.avail{border-color:var(--primary-border);background:var(--primary-light)}
+.dcard.inter{border-color:var(--warn-border);background:var(--warn-light)}
+.dcard.match{border-color:var(--success-border);background:var(--success-light);opacity:.8}
+.dnum{font-size:46px;font-weight:900;font-family:var(--mono);line-height:1;background:transparent!important}
+.dname{font-size:13px;color:var(--text);margin-top:4px;background:transparent!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.dstat{font-size:12px;margin-top:5px;font-weight:600;background:transparent!important;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+/* 數字、姓名、狀態三者同色依狀態 */
+.dcard.avail .dnum,.dcard.avail .dname{color:var(--primary)}
+.dcard.avail .dstat{color:var(--primary);opacity:.8}
+.dcard.inter .dnum,.dcard.inter .dname{color:var(--warn)}
+.dcard.inter .dstat{color:var(--warn);opacity:.9}
+.dcard.match .dnum,.dcard.match .dname{color:var(--success)}
+.dcard.match .dstat{color:var(--success);opacity:.9}
+
+/* Pre-schedule */
+.chk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);padding:10px}
+.chk-item{display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:13px;transition:.15s}
+.chk-item:hover{background:var(--bg)}.chk-item.on{background:var(--primary-light);border-color:var(--primary-border)}
+.radio-row{display:flex;gap:8px;margin-bottom:10px}
+.ropt{display:flex;align-items:center;gap:6px;padding:6px 14px;border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;font-size:13px;transition:.15s}
+.ropt:hover{background:var(--bg)}.ropt.on{background:var(--primary-light);border-color:var(--primary-border);color:var(--primary);font-weight:600}
+.ropt input{width:auto}
+
+/* Alert */
+.alert{padding:12px 16px;border-radius:var(--radius);font-size:13px;margin-bottom:10px;border-left:4px solid}
+.alert-info{background:var(--primary-light);color:var(--primary);border-color:var(--primary)}
+.alert-warn{background:var(--warn-light);color:var(--warn);border-color:#d69e2e}
+code{background:#edf2f7;padding:1px 5px;border-radius:4px;font-family:var(--mono);font-size:12px}
+
+/* Voice */
+.voice-test{background:var(--bg);border-radius:var(--radius);padding:14px;margin-top:12px;border:1px solid var(--border)}
+
+/* Toast */
+#toasts{position:fixed;bottom:20px;right:20px;display:flex;flex-direction:column;gap:8px;z-index:9999}
+.toast{padding:10px 16px;border-radius:var(--radius);font-size:13px;font-weight:500;color:#fff;animation:tin .25s ease;box-shadow:0 4px 12px rgba(0,0,0,.2)}
+.toast.info{background:#2b6cb0}.toast.ok{background:#38a169}.toast.err{background:#e53e3e}.toast.warn{background:#d69e2e}
+@keyframes tin{from{transform:translateX(20px);opacity:0}to{transform:translateX(0);opacity:1}}
+
+/* Fullscreen */
+/* ── Fullscreen display layout ── */
+#panel-disp,#dispWrap,#dispMain{background:#f0f4f8!important;background-image:linear-gradient(#f0f4f8,#f0f4f8)!important}
+#dispMain{display:flex;flex-direction:column;position:relative}
+:-webkit-full-screen .disp-hdr,:fullscreen .disp-hdr{border-radius:0;flex-shrink:0}
+:-webkit-full-screen #dispWrap,:fullscreen #dispWrap{
+  display:flex;flex-direction:column;
+  height:100vh;width:100vw;overflow:hidden;
+  /* background-image 繞過 Chrome 強制暗色模式 */
+  background:#f0f4f8!important;
+  background-image:linear-gradient(#f0f4f8 0%,#f0f4f8 100%)!important;
+}
+html[data-dark="1"] :-webkit-full-screen #dispWrap,
+html[data-dark="1"] :fullscreen #dispWrap{
+  background:#0f172a!important;
+  background-image:linear-gradient(#0f172a 0%,#0f172a 100%)!important;
+}
+:-webkit-full-screen #dispMain,:fullscreen #dispMain{
+  flex:1;min-height:0;overflow:hidden;position:relative;z-index:1;
+  display:flex;flex-direction:column;
+  background:#f0f4f8!important;
+  background-image:linear-gradient(#f0f4f8 0%,#f0f4f8 100%)!important;
+}
+html[data-dark="1"] :-webkit-full-screen #dispMain,
+html[data-dark="1"] :fullscreen #dispMain{
+  background:#0f172a!important;
+  background-image:linear-gradient(#0f172a 0%,#0f172a 100%)!important;
+}
+/* 播報圖卡：跑馬燈下方、學生格上方，自然高度 */
+:-webkit-full-screen .disp-ann-area,:fullscreen .disp-ann-area{
+  flex-shrink:0;overflow:visible;border-radius:0!important;position:relative;z-index:2;
+}
+/* 學生格：fill 剩餘空間，background-image 防暗 */
+:-webkit-full-screen .disp-grid,:fullscreen .disp-grid{
+  flex:1;min-height:0;overflow:hidden;position:relative;z-index:1;
+  background:#f8fafc!important;
+  background-image:linear-gradient(#f8fafc 0%,#f8fafc 100%)!important;
+  grid-template-columns:repeat(auto-fill,minmax(100px,1fr))!important;
+  grid-auto-rows:minmax(70px,1fr);align-content:stretch;
+  border-radius:0!important;border-left:none;border-right:none;
+}
+html[data-dark="1"] :-webkit-full-screen .disp-grid,
+html[data-dark="1"] :fullscreen .disp-grid{
+  background:#0f172a!important;
+  background-image:linear-gradient(#0f172a 0%,#0f172a 100%)!important;
+}
+:-webkit-full-screen .dcard,:fullscreen .dcard{padding:6px 8px!important}
+:-webkit-full-screen .dnum,:fullscreen .dnum{font-size:22px!important}
+:-webkit-full-screen .dname,:fullscreen .dname{font-size:10px!important;margin-top:2px!important}
+:-webkit-full-screen .dstat,:fullscreen .dstat{font-size:9px!important;margin-top:3px!important}
+
+/* Table */
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th,.tbl td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--border)}
+.tbl th{background:var(--bg);font-weight:600;color:var(--muted);font-size:12px}
+.tbl tr:hover td{background:#fafbfc}
+
+/* Import list */
+.import-list{border:1px solid var(--border);border-radius:var(--radius);max-height:220px;overflow-y:auto}
+.import-row{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-bottom:1px solid #f7fafc;font-size:13px}
+.import-row:last-child{border-bottom:none}
+
+@media(max-width:700px){
+  .two,.three,.stats{grid-template-columns:1fr}
+  .sgrid{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))}
+  .disp-grid{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))}
+  .hdr-title{font-size:14px}
+}
+
+/* ── Marquee ticker ── */
+.mq-bar{background:#0d1b2e;color:#e2e8f0;height:32px;overflow:hidden;display:flex;align-items:center;font-size:13px;border-bottom:1px solid rgba(255,255,255,.08)}
+.mq-label{flex-shrink:0;background:#2b6cb0;height:100%;padding:0 12px;display:flex;align-items:center;font-size:11px;font-weight:700;letter-spacing:.5px;white-space:nowrap}
+.mq-track{flex:1;overflow:hidden}
+.mq-inner{display:inline-flex;white-space:nowrap;will-change:transform}
+@keyframes mq-anim{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+.mq-empty{color:rgba(255,255,255,.35);font-size:12px;padding:0 16px}
+
+/* ── Dark / Light theme ── */
+html[data-dark="1"]{
+  --bg:#0f172a;--surface:#1e293b;--border:#334155;
+  --text:#f1f5f9;--muted:#94a3b8;
+  --primary-light:#1e3358;--primary-border:#2b6cb0;
+  --success-light:#14291f;--success-border:#276749;
+  --warn-light:#2d1e08;--warn-border:#744210;
+  --danger-light:#2d1111;--danger-border:#9b2c2c;
+  --purple-light:#1e1433;--purple-border:#553c9a;
+}
+html[data-dark="1"] input,html[data-dark="1"] select,html[data-dark="1"] textarea{
+  background:var(--surface)!important;color:var(--text)!important;border-color:var(--border)!important;
+}
+html[data-dark="1"] .import-list,html[data-dark="1"] .log-box,
+html[data-dark="1"] .voice-test,html[data-dark="1"] .chk-grid{
+  background:var(--surface);border-color:var(--border);
+}
+html[data-dark="1"] .chk-item{background:var(--surface);color:var(--text);border-color:var(--border)}
+html[data-dark="1"] .chk-item.on{background:var(--primary-light)}
+html[data-dark="1"] .stat,html[data-dark="1"] .scard,
+html[data-dark="1"] .import-row,html[data-dark="1"] .log-row{color:var(--text)}
+html[data-dark="1"] .scard.avail{background:var(--primary-light);border-color:var(--primary-border)}
+html[data-dark="1"] .scard.inter{background:var(--warn-light);border-color:var(--warn-border)}
+html[data-dark="1"] .scard.match{background:var(--success-light);border-color:var(--success-border)}
+html[data-dark="1"] .tbl th{background:var(--surface)}
+html[data-dark="1"] .tbl tr:hover td{background:var(--border)}
+html[data-dark="1"] .ropt{background:var(--surface);color:var(--text)}
+html[data-dark="1"] .ropt.on{background:var(--primary-light)}
+html[data-dark="1"] .alert-info{background:var(--primary-light);color:#93c5fd}
+html[data-dark="1"] .alert-warn{background:var(--warn-light);color:#fcd34d}
+/* 投影顯示 dark */
+html[data-dark="1"] .disp-grid{background:#f8fafc!important;background-image:linear-gradient(#f8fafc,#f8fafc)!important}
+html[data-dark="1"] .dcard.avail{background:var(--primary-light);border-color:var(--primary-border)}
+html[data-dark="1"] .dcard.inter{background:var(--warn-light);border-color:var(--warn-border)}
+html[data-dark="1"] .dcard.match{background:var(--success-light);border-color:var(--success-border)}
+/* mqDispBar: 僅全螢幕顯示，防止重複 */
+#mqDispBar{display:none}
+:-webkit-full-screen #mqDispBar{display:flex!important}
+:fullscreen #mqDispBar{display:flex!important}
+
+/* ── Explicit colors (Chrome dark-mode protection) ── */
+.import-list{background:var(--surface)}
+.import-row{background:transparent;color:var(--text)}
+.import-row span{color:var(--text)}
+.scard,.stat,.log-row,.tbl td,.ropt{color:var(--text)}
+.card{color:var(--text)}
+
+/* ── Display announcement cards (Layout B) ── */
+.disp-ann-area{
+  background:#f8fafc;padding:8px 14px 10px;
+  border-radius:0;
+  border:1px solid var(--border);border-top:none;min-height:60px;position:relative;z-index:2;overflow:visible;
+}
+.dann-label{color:#718096;font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;margin-bottom:6px}
+.dann-wrap{display:flex;gap:10px;min-height:108px;height:auto;align-items:stretch;overflow:visible}
+.dann-big{flex:0 0 150px;border-radius:10px;padding:12px 14px;position:relative;overflow:hidden;display:flex;flex-direction:column}
+.dann-match{background:#f0fff4;border:1.5px solid #9ae6b4}
+.dann-inter{background:#fffbeb;border:1.5px solid #f6e05e}
+.dann-icon{font-size:20px;line-height:1;margin-bottom:3px}
+.dann-num{font-size:34px;font-weight:800;font-family:var(--mono);line-height:1}
+.dann-match .dann-num{color:#276749}.dann-inter .dann-num{color:#744210}
+.dann-name{color:#1a202c;font-size:15px;font-weight:500;margin-top:3px}
+.dann-co{color:#718096;font-size:12px;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dann-badge{position:absolute;top:6px;right:6px;font-size:10px;font-weight:700;padding:1px 5px;border-radius:3px}
+.dann-match .dann-badge{background:#c6f6d5;color:#276749}
+.dann-inter .dann-badge{background:#fef3c7;color:#744210}
+.dann-prev{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:6px;flex:1;min-width:0;align-content:stretch}
+.dann-sm{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px}
+.dann-sm-num{font-size:22px;font-weight:700;font-family:var(--mono);min-width:22px}
+.dann-sm.dann-match .dann-sm-num{color:#276749}.dann-sm.dann-inter .dann-sm-num{color:#744210}
+.dann-sm-r{flex:1;min-width:0}
+.dann-sm-name{color:#1a202c;font-size:14px;font-weight:700}
+.dann-sm-co{color:#718096;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dann-empty{color:#718096;font-size:14px;padding:4px 0}
+.dann-empty-sm{color:#a0aec0;font-size:13px}
+.disp-ann-area[data-ann-size="md"]{--ann-scale:.9}
+.disp-ann-area[data-ann-size="lg"]{--ann-scale:1}
+.disp-ann-area[data-ann-size="xl"]{--ann-scale:1.18}
+.disp-ann-area{font-size:calc(14px * var(--ann-scale,1))}
+.disp-ann-area[data-ann-size="xl"] .dann-big{flex-basis:180px}
+.disp-ann-area[data-ann-size="xl"] .dann-prev{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.disp-ann-area[data-ann-size="md"] .dann-big{flex-basis:135px}
+.disp-ann-area[data-ann-size="md"] .dann-prev{grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+.disp-ann-area[data-ann-size="md"] .dann-num{font-size:28px}.disp-ann-area[data-ann-size="xl"] .dann-num{font-size:40px}
+.disp-ann-area[data-ann-size="md"] .dann-sm-num{font-size:18px}.disp-ann-area[data-ann-size="xl"] .dann-sm-num{font-size:26px}
+.disp-ann-area[data-ann-size="md"] .dann-name{font-size:13px}.disp-ann-area[data-ann-size="xl"] .dann-name{font-size:17px}
+.disp-ann-area[data-ann-size="md"] .dann-sm-name{font-size:12px}.disp-ann-area[data-ann-size="xl"] .dann-sm-name{font-size:16px}
+html[data-dark="1"],html[data-dark="1"] body{background:#0f172a!important;background-image:linear-gradient(#0f172a,#0f172a)!important}
+html[data-dark="1"] .wrap{background:#0f172a!important}html[data-dark="1"] #panel-disp,html[data-dark="1"] #dispWrap,html[data-dark="1"] #dispMain{background:#0f172a!important;background-image:linear-gradient(#0f172a,#0f172a)!important}
+html[data-dark="1"] .disp-ann-area{background:#111827!important;border-color:#334155;color:#f1f5f9}
+html[data-dark="1"] .dann-match{background:#14291f;border-color:#276749}
+html[data-dark="1"] .dann-inter{background:#2d1e08;border-color:#744210}
+html[data-dark="1"] .dann-name,html[data-dark="1"] .dann-sm-name{color:#f8fafc}
+html[data-dark="1"] .dann-co,html[data-dark="1"] .dann-sm-co,html[data-dark="1"] .dann-label{color:#cbd5e1}
+html[data-dark="1"] .dann-empty,html[data-dark="1"] .dann-empty-sm{color:#94a3b8}
+/* Announcement font presets */
+.disp-ann-area[data-ann-size="md"] .dann-big{flex-basis:175px!important}
+.disp-ann-area[data-ann-size="md"] .dann-prev{grid-template-columns:repeat(auto-fit,minmax(245px,1fr))!important}
+.disp-ann-area[data-ann-size="md"] .dann-icon{font-size:24px!important}.disp-ann-area[data-ann-size="md"] .dann-num{font-size:42px!important}.disp-ann-area[data-ann-size="md"] .dann-name{font-size:18px!important}.disp-ann-area[data-ann-size="md"] .dann-co{font-size:14px!important}.disp-ann-area[data-ann-size="md"] .dann-sm-num{font-size:26px!important}.disp-ann-area[data-ann-size="md"] .dann-sm-name{font-size:16px!important}.disp-ann-area[data-ann-size="md"] .dann-sm-co{font-size:14px!important}.disp-ann-area[data-ann-size="md"] .dann-sm-icon{font-size:22px!important}
+.disp-ann-area[data-ann-size="lg"] .dann-big{flex-basis:215px!important}
+.disp-ann-area[data-ann-size="lg"] .dann-prev{grid-template-columns:repeat(auto-fit,minmax(310px,1fr))!important}
+.disp-ann-area[data-ann-size="lg"] .dann-icon{font-size:30px!important}.disp-ann-area[data-ann-size="lg"] .dann-num{font-size:58px!important}.disp-ann-area[data-ann-size="lg"] .dann-name{font-size:24px!important}.disp-ann-area[data-ann-size="lg"] .dann-co{font-size:17px!important}.disp-ann-area[data-ann-size="lg"] .dann-sm-num{font-size:36px!important}.disp-ann-area[data-ann-size="lg"] .dann-sm-name{font-size:22px!important}.disp-ann-area[data-ann-size="lg"] .dann-sm-co{font-size:17px!important}.disp-ann-area[data-ann-size="lg"] .dann-sm-icon{font-size:28px!important}
+.disp-ann-area[data-ann-size="xl"] .dann-big{flex-basis:270px!important}
+.disp-ann-area[data-ann-size="xl"] .dann-prev{grid-template-columns:repeat(auto-fit,minmax(390px,1fr))!important}
+.disp-ann-area[data-ann-size="xl"] .dann-icon{font-size:40px!important}.disp-ann-area[data-ann-size="xl"] .dann-num{font-size:82px!important}.disp-ann-area[data-ann-size="xl"] .dann-name{font-size:34px!important}.disp-ann-area[data-ann-size="xl"] .dann-co{font-size:24px!important}.disp-ann-area[data-ann-size="xl"] .dann-sm-num{font-size:54px!important}.disp-ann-area[data-ann-size="xl"] .dann-sm-name{font-size:32px!important}.disp-ann-area[data-ann-size="xl"] .dann-sm-co{font-size:24px!important}.disp-ann-area[data-ann-size="xl"] .dann-sm-icon{font-size:38px!important}html[data-dark="1"] .disp-grid{background:#0f172a!important;background-image:linear-gradient(#0f172a,#0f172a)!important}
+html[data-dark="1"] .dcard.avail{background:#1e3358;border-color:#2b6cb0}
+html[data-dark="1"] .dcard.inter{background:#2d1e08;border-color:#744210}
+html[data-dark="1"] .dcard.match{background:#14291f;border-color:#276749}
+
+/* Dark-mode readability: dark surfaces use white text; light controls keep dark text. */
+html[data-dark="1"] .card,
+html[data-dark="1"] .stat,
+html[data-dark="1"] .scard,
+html[data-dark="1"] .dcard,
+html[data-dark="1"] .disp-ann-area,
+html[data-dark="1"] .dann-big,
+html[data-dark="1"] .dann-sm,
+html[data-dark="1"] .co-status,
+html[data-dark="1"] .log-row,
+html[data-dark="1"] .import-row,
+html[data-dark="1"] .tbl td,
+html[data-dark="1"] .tbl th,
+html[data-dark="1"] .chk-item,
+html[data-dark="1"] .ropt{
+  color:#fff!important;
+}
+html[data-dark="1"] .scard *,
+html[data-dark="1"] .dcard *,
+html[data-dark="1"] .stat *,
+html[data-dark="1"] .disp-ann-area *,
+html[data-dark="1"] .log-row *,
+html[data-dark="1"] .import-row *,
+html[data-dark="1"] .tbl td *,
+html[data-dark="1"] .tbl th *{
+  color:#fff!important;
+}
+html[data-dark="1"] .btn-ghost,
+html[data-dark="1"] .btn-ghost *,
+html[data-dark="1"] button:disabled,
+html[data-dark="1"] button:disabled *,
+html[data-dark="1"] .sact .btn-ghost,
+html[data-dark="1"] .sact .btn-ghost *{
+  background:#e5e7eb!important;
+  border-color:#cbd5e1!important;
+  color:#111827!important;
+}
+html[data-dark="1"] .btn-primary,
+html[data-dark="1"] .btn-success,
+html[data-dark="1"] .btn-danger,
+html[data-dark="1"] .btn-warn,
+html[data-dark="1"] .toast,
+html[data-dark="1"] .nav-btn,
+html[data-dark="1"] .disp-col-btn,
+html[data-dark="1"] .stage-banner,
+html[data-dark="1"] .hdr,
+html[data-dark="1"] .disp-hdr,
+html[data-dark="1"] .mq-bar,
+html[data-dark="1"] .mq-label{
+  color:#fff!important;
+}
+html[data-dark="1"] .btn-primary *,
+html[data-dark="1"] .btn-success *,
+html[data-dark="1"] .btn-danger *,
+html[data-dark="1"] .btn-warn *{
+  color:#fff!important;
+}
+html[data-dark="1"] input,
+html[data-dark="1"] select,
+html[data-dark="1"] textarea{
+  background:#111827!important;
+  color:#fff!important;
+  border-color:#475569!important;
+}
+html[data-dark="1"] .badge,
+html[data-dark="1"] .scard-badge,
+html[data-dark="1"] .dann-badge{
+  background:#e5e7eb!important;
+  color:#111827!important;
+  border-color:#cbd5e1!important;
+}
+html[data-dark="1"] .alert,
+html[data-dark="1"] code,
+html[data-dark="1"] #loginPreview{
+  color:#111827!important;
+}
+
+/* ── Share Modal ── */
+#shareModal{display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.55);align-items:center;justify-content:center}
+#shareModal.open{display:flex}
+.smod-box{background:#fff;border-radius:16px;padding:26px 26px 20px;width:min(520px,96vw);max-height:92vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,.35);animation:smodin .2s ease}
+@keyframes smodin{from{transform:scale(.9);opacity:0}to{transform:scale(1);opacity:1}}
+html[data-dark="1"] .smod-box{background:#1e293b;color:#f1f5f9}
+.smod-hdr{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px}
+.smod-title{font-size:17px;font-weight:800;color:#1a365d}
+html[data-dark="1"] .smod-title{color:#93c5fd}
+.smod-close{background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);padding:0 4px;line-height:1}
+.smod-close:hover{color:var(--text)}
+.smod-body{display:flex;gap:16px;flex-wrap:wrap}
+.smod-qr{flex-shrink:0;text-align:center}
+.smod-qr-box{width:180px;height:180px;border:1px solid var(--border);border-radius:10px;background:#f8fafc;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--muted)}
+.smod-right{flex:1;min-width:200px}
+.smod-url{background:var(--bg);border:2px solid var(--primary-border);border-radius:8px;padding:8px 12px;font-size:11px;font-family:var(--mono);word-break:break-all;cursor:pointer;color:var(--primary);line-height:1.6;margin-top:8px;display:none}
+.smod-url:hover{background:var(--primary-light)}
+html[data-dark="1"] .smod-url{background:#0f172a;color:#93c5fd}
+.smod-status{font-size:12px;color:var(--muted);margin-top:6px;min-height:16px}
+.smod-info{font-size:12px;color:var(--muted);margin-top:6px}
+.smod-warn{font-size:11px;color:#e53e3e;margin-top:8px;font-weight:600}
+.smod-copied{font-size:12px;color:#38a169;font-weight:600;margin-top:4px;display:none}
+
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div class="hdr-inner">
+    <span class="hdr-title">🏢 媒合面試系統｜管理端</span>
+    <span class="hdr-stage" id="hdrStage">第1階段</span>
+    <nav class="nav">
+      <button class="nav-btn on" data-tab="import" onclick="goTab('import')">📥 學生廠商</button>
+      <button class="nav-btn" data-tab="pre" onclick="goTab('pre')">📋 預排名單</button>
+      <button class="nav-btn" data-tab="mgmt" onclick="goTab('mgmt')">🎯 面試管理</button>
+      <button class="nav-btn" data-tab="voice" onclick="goTab('voice')">⚙️ 設定</button>
+      <button class="nav-btn" data-tab="disp" onclick="goTab('disp')">📺 投影顯示</button>
+    </nav>
+    <button class="nav-btn" id="themeBtn" onclick="toggleTheme()" title="深色/淺色切換" style="margin-left:6px;font-size:16px;padding:6px 10px">🌙</button>
+    <button class="nav-btn" onclick="openShareModal()" style="margin-left:4px;background:rgba(255,255,255,.18);font-weight:700;letter-spacing:.3px">📲 分享</button>
+  </div>
+
+<!-- ── 跑馬燈播報列 ── -->
+<div class="mq-bar" id="mqGlobalBar">
+  <span class="mq-label">📡 播報</span>
+  <div class="mq-track">
+    <div class="mq-inner" id="mqGInner"><span id="mqGA"></span><span id="mqGB"></span></div>
+  </div>
+</div>
+
+
+<!-- ────────── 學生廠商 ────────── -->
+<div class="panel on wrap" id="panel-import">
+  <div class="two">
+    <div class="card">
+      <div class="card-title">👨‍🎓 學生名單匯入</div>
+      <div class="fg">
+        <label class="lbl">貼上文字（每行：座號 姓名 或 座號,姓名）</label>
+        <textarea id="stText" placeholder="01 陳小明&#10;02 林小華&#10;03 王大明&#10;04,張小花"></textarea>
+      </div>
+      <div class="frow">
+        <div class="fg"><button class="btn btn-primary" style="width:100%" onclick="importSt()">📥 匯入文字</button></div>
+        <div class="fg">
+          <label class="btn btn-ghost" style="width:100%;cursor:pointer;justify-content:center">
+            📂 上傳 CSV<input type="file" accept=".csv,.txt" id="stCsv" style="display:none" onchange="importStCsv(this)">
+          </label>
+        </div>
+        <div class="fg"><button class="btn btn-danger btn-sm" style="width:100%" onclick="clearStudents()">清除全部</button></div>
+      </div>
+      <hr style="margin:14px 0;border:none;border-top:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="font-size:13px;font-weight:700">目前學生：<span id="stCount">0</span> 人</span>
+      </div>
+      <div class="import-list" id="stList"><p style="font-size:12px;color:var(--muted);padding:10px">尚未匯入</p></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🏭 廠商名單匯入</div>
+      <div class="fg">
+        <label class="lbl">貼上文字（每行：廠商名稱,媒合上限 或 編號,廠商名稱,媒合上限；上限空白代表不限）</label>
+        <textarea id="coText" placeholder="A公司,3&#10;B科技股份有限公司,5&#10;C企業&#10;1,鼎新電腦,2"></textarea>
+      </div>
+      <div class="frow">
+        <div class="fg"><button class="btn btn-primary" style="width:100%" onclick="importCo()">📥 匯入文字</button></div>
+        <div class="fg">
+          <label class="btn btn-ghost" style="width:100%;cursor:pointer;justify-content:center">
+            📂 上傳 CSV<input type="file" accept=".csv,.txt" id="coCsv" style="display:none" onchange="importCoCsv(this)">
+          </label>
+        </div>
+        <div class="fg"><button class="btn btn-danger btn-sm" style="width:100%" onclick="clearCompanies()">清除全部</button></div>
+      </div>
+      <hr style="margin:14px 0;border:none;border-top:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="font-size:13px;font-weight:700">目前廠商：<span id="coCount">0</span> 家</span>
+      </div>
+      <div class="import-list" id="coList"><p style="font-size:12px;color:var(--muted);padding:10px">尚未匯入</p></div>
+    </div>
+  </div>
+
+  <div class="alert alert-warn" style="margin-top:14px">
+    ⚠️ 匯入學生/廠商後請至「預排名單」頁設定各廠商可面試的學生範圍，服務台才能正常操作。
+  </div>
+  <div class="alert alert-info" style="margin-top:8px">
+    💡 <strong>使用說明：</strong>設定完學生、廠商與預排名單後，點擊上方「產生 QR Code 與連結」，學生用手機掃描即可直接使用服務台，不需同一台電腦。
+  </div>
+</div>
+
+<!-- ────────── 預排名單 ────────── -->
+<div class="panel wrap" id="panel-pre">
+  <div class="card" style="max-width:700px">
+    <div class="card-title">📋 廠商預排面試名單</div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:16px">設定後，服務台介面只有名單內的學生可以被點選，其他人呈灰色無法操作，避免誤點。</p>
+
+    <div class="fg">
+      <label class="lbl">選擇廠商</label>
+      <select id="preCo" onchange="renderPrePanel()">
+        <option value="">— 請先選擇廠商 —</option>
+      </select>
+    </div>
+
+    <div id="prePanel" style="display:none">
+      <div class="radio-row">
+        <label class="ropt" id="rAll"><input type="radio" name="pm" value="all" onchange="setPM('all')"> 🌐 全班同學</label>
+        <label class="ropt" id="rSpec"><input type="radio" name="pm" value="spec" onchange="setPM('spec')"> 📌 指定名單</label>
+      </div>
+      <div id="specArea" style="display:none">
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <button class="btn btn-ghost btn-sm" onclick="psSelectAll()">全選</button>
+          <button class="btn btn-ghost btn-sm" onclick="psDeselectAll()">全不選</button>
+          <span style="font-size:12px;color:var(--muted);align-self:center">已選 <span id="psSelCount">0</span> 人</span>
+        </div>
+        <div class="chk-grid" id="psChkGrid"></div>
+      </div>
+      <div style="margin-top:14px">
+        <button class="btn btn-success" onclick="savePS()">💾 儲存此廠商設定</button>
+      </div>
+    </div>
+
+    <hr style="margin:16px 0;border:none;border-top:1px solid var(--border)">
+    <div class="card-title" style="margin-bottom:8px">各廠商設定摘要</div>
+    <div id="psSummary"></div>
+  </div>
+</div>
+
+<!-- ────────── 面試管理 ────────── -->
+<div class="panel wrap" id="panel-mgmt">
+  <div class="stage-banner">
+    <div>
+      <div class="stage-title">目前階段</div>
+      <div class="stage-num" id="mgmtStage">第 1 階段</div>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-warn btn-lg" id="advBtn" onclick="advanceStage()">🚩 進入第二階段</button>
+      <button class="btn btn-lg" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.45)" onclick="resetAll()">🔄 重置系統</button>
+    </div>
+  </div>
+
+  <div class="stats" id="statsRow"></div>
+  <div id="mgmtAnn"></div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div class="card-title" style="margin-bottom:0">學生面試狀態</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select id="mgmtFilter" style="width:auto;font-size:12px" onchange="renderMgmt()">
+          <option value="">全部學生</option>
+          <option value="available">等待中</option>
+          <option value="interviewing">面試中</option>
+          <option value="matched">已媒合</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" onclick="renderMgmt()">↻ 更新</button>
+      </div>
+    </div>
+    <div class="sgrid" id="mgmtGrid"></div>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <div class="card-title">📋 操作記錄</div>
+    <div class="log-box" id="logBox"></div>
+  </div>
+</div>
+
+<!-- ────────── 語音設定 ────────── -->
+<div class="panel wrap" id="panel-voice">
+  <div class="card" style="max-width:520px">
+    <div class="card-title">⚙️ 設定</div>
+
+    <div class="fg">
+      <label class="lbl">啟用語音播報</label>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+        <input type="checkbox" id="vEnable" onchange="saveVoice()">
+        <span style="font-size:13px">啟用（邀請面試 & 媒合成功時自動播報）</span>
+      </label>
+    </div>
+
+    <div id="vCfg">
+      <div class="fg">
+        <label class="lbl">重複播報次數（每則通知）</label>
+        <select id="vRepeat" style="width:120px" onchange="saveVoice()">
+          <option value="1">1 次</option>
+          <option value="2" selected>2 次</option>
+          <option value="3">3 次</option>
+          <option value="4">4 次</option>
+          <option value="5">5 次</option>
+        </select>
+      </div>
+
+      <div class="fg">
+        <label class="lbl">語速</label>
+        <div style="display:flex;align-items:center;gap:12px">
+          <input type="range" id="vRate" min="0.5" max="1.5" step="0.05" value="0.85" style="width:180px" oninput="document.getElementById('vRateLbl').textContent=parseFloat(this.value).toFixed(2);saveVoice()">
+          <span id="vRateLbl" style="font-family:var(--mono);font-size:13px;min-width:36px">0.85</span>
+        </div>
+      </div>
+
+      <div class="fg">
+        <label class="lbl">語音選擇（中文語音）</label>
+        <select id="vVoice" onchange="saveVoice()">
+          <option value="">自動選擇</option>
+        </select>
+        <p style="font-size:11px;color:var(--muted);margin-top:4px">若無中文語音，請至作業系統安裝中文 TTS 語音包</p>
+      </div>
+
+      <div class="fg">
+        <label class="lbl">跑馬燈顯示最近幾則訊息（達上限後循環）</label>
+        <select id="mqCount" style="width:150px" onchange="saveVoice()">
+          <option value="3">最近 3 則</option>
+          <option value="5" selected>最近 5 則</option>
+          <option value="8">最近 8 則</option>
+          <option value="10">最近 10 則</option>
+          <option value="15">最近 15 則</option>
+          <option value="20">全部 20 則</option>
+        </select>
+      </div>
+      <div class="fg">
+        <label class="lbl">投影媒合資訊顯示則數</label>
+        <select id="annCount" style="width:150px" onchange="saveVoice();renderDispAnn()">
+          <option value="4">4 則</option>
+          <option value="6" selected>6 則</option>
+          <option value="8">8 則</option>
+          <option value="10">10 則</option>
+          <option value="12">12 則</option>
+        </select>
+      </div>
+
+      <div class="fg">
+        <label class="lbl">投影媒合資訊字體</label>
+        <select id="annSize" style="width:150px" onchange="saveVoice();renderDispAnn()">
+          <option value="md">標準</option>
+          <option value="lg" selected>大字</option>
+          <option value="xl">超大字</option>
+        </select>
+      </div>
+
+      <div class="voice-test">
+        <p style="font-size:12px;font-weight:600;margin-bottom:10px">🎧 測試播放</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" onclick="testVoice('interview')">測試「邀請面試」</button>
+          <button class="btn btn-ghost btn-sm" onclick="testVoice('match')">測試「媒合成功」</button>
+          <button class="btn btn-danger btn-sm" onclick="stopVoice()">■ 停止</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ────────── 投影顯示 ────────── -->
+<div class="panel wrap" id="panel-disp">
+  <div id="dispWrap">
+    <!-- 投影顯示內跑馬燈 -->
+    <div class="mq-bar" id="mqDispBar" style="border-radius:var(--radius-lg) var(--radius-lg) 0 0">
+      <span class="mq-label">📡 播報</span>
+      <div class="mq-track">
+        <div class="mq-inner" id="mqDInner"><span id="mqDA"></span><span id="mqDB"></span></div>
+      </div>
+    </div>
+    <div class="disp-hdr" id="dispHdr">
+      <span class="disp-stage" id="dispStage">第1階段</span>
+      <span class="disp-stats" id="dispStats"></span>
+      <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <span style="color:rgba(255,255,255,.5);font-size:11px">欄數</span>
+        <button class="disp-col-btn" data-cols="auto" onclick="setDispCols('auto')">自動</button>
+        <button class="disp-col-btn" data-cols="6" onclick="setDispCols(6)">6</button>
+        <button class="disp-col-btn" data-cols="8" onclick="setDispCols(8)">8</button>
+        <button class="disp-col-btn" data-cols="10" onclick="setDispCols(10)">10</button>
+        <button class="disp-col-btn" data-cols="12" onclick="setDispCols(12)">12</button>
+        <button class="btn btn-sm" style="background:rgba(255,255,255,.12);color:#fff;border-color:rgba(255,255,255,.3)" onclick="toggleFS()">⛶ 全螢幕</button>
+      </div>
+    </div>
+    <div id="dispMain">
+      <div class="disp-ann-area" id="dispAnn"></div>
+      <div class="disp-grid" id="dispGrid"></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════ 📲 分享 Modal ════════════ -->
+<div id="shareModal" onclick="if(event.target===this)closeShareModal()">
+  <div class="smod-box">
+    <div class="smod-hdr">
+      <div>
+        <div class="smod-title">📲 手機分享 QR Code</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">學生掃描後直接進入服務台</div>
+      </div>
+      <button class="smod-close" onclick="closeShareModal()">✕</button>
+    </div>
+    <div class="smod-body">
+      <div class="smod-qr">
+        <div class="smod-qr-box" id="smodQrWrap">按右側按鈕產生</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:5px">手機掃一掃</div>
+      </div>
+      <div class="smod-right">
+        <button class="btn btn-primary" style="width:100%" onclick="genShareLink()">🔗 產生短網址 &amp; QR Code</button>
+        <div class="smod-url" id="shareUrlBox" onclick="copyShareUrl()" title="點擊複製">—</div>
+        <div class="smod-copied" id="copyMsg">✓ 已複製！</div>
+        <div class="smod-status" id="shareStatus"></div>
+        <div class="smod-info" id="shareInfo"></div>
+        <div class="smod-warn">⚠️ 修改設定後請重新產生</div>
+      </div>
+    </div>
+    <!-- hidden canvas for fallback -->
+    <canvas id="qrCanvas" style="display:none"></canvas>
+  </div>
+</div>
+
+<div id="toasts"></div>
+
+<script>
+// ══════════════════════════════════════════════════
+//  CONSTANTS & STATE
+// ══════════════════════════════════════════════════
+const KEY = 'ims_state_v2';
+const BC  = new BroadcastChannel('ims_bc_v2');
+
+let S   = null;   // shared state
+let VQ  = [];     // voice queue
+let VSP = false;  // voice speaking flag
+let LAST_ANN  = sessionStorage.getItem('ims_last_ann') || '';
+let adminCoChoice = {};
+
+// Pre-schedule local UI state
+let curPsCo  = '';
+let psMode   = 'all';
+let psChosen = new Set();
+
+function defState(){
+  return{
+    stage:1,
+    students:[],   // [{id:'01',name:'陳小明'}]
+    companies:[],  // [{id:'c0',name:'A公司'}]
+    statuses:{},   // {studentId:{s:'available'|'interviewing'|'matched',iw:coId|null,mw:coId|null}}
+    preSched:{},   // {coId:{mode:'all'|'spec',list:['01','03']}}
+    log:[],
+    anns:[],       // [{id,type,sid,cid,ts,done}]
+    cfg:{voice:true,repeat:2,rate:0.85,vUri:''},
+    ts:0
+  };
+}
+
+// ══════════════════════════════════════════════════
+//  STORAGE
+// ══════════════════════════════════════════════════
+function load(){
+  try{const d=localStorage.getItem(KEY);S=d?JSON.parse(d):defState();}
+  catch{S=defState();}
+  normalizeCompanies();
+}
+function save(){
+  S.ts=Date.now();
+  localStorage.setItem(KEY,JSON.stringify(S));
+  try{BC.postMessage('u');}catch{}
+}
+
+// ══════════════════════════════════════════════════
+//  HELPERS
+// ══════════════════════════════════════════════════
+function ts(){
+  const d=new Date();
+  return[d.getHours(),d.getMinutes(),d.getSeconds()].map(x=>String(x).padStart(2,'0')).join(':');
+}
+function uid(){return Math.random().toString(36).slice(2);}
+function sts(sid){return S.statuses[sid]||{s:'available',iw:null,mw:null};}
+function setSts(sid,s,iw=null,mw=null){S.statuses[sid]={s,iw,mw};}
+function coBusy(cid){return Object.values(S.statuses).some(x=>x.s==='interviewing'&&x.iw===cid);}
+function coName(cid){return (S.companies.find(c=>c.id===cid)||{name:cid}).name;}
+function stName(sid){const s=S.students.find(x=>x.id===sid);return s?s.name:sid;}
+function addLog(msg){S.log=[{t:ts(),msg,id:uid()},...S.log].slice(0,120);}
+function normalizeCompanies(){
+  S.companies=(S.companies||[]).map(c=>({id:c.id,name:c.name,maxMatch:normalizeLimit(c.maxMatch)}));
+}
+function normalizeLimit(v){
+  if(v===''||v===null||v===undefined)return null;
+  const n=parseInt(v,10);
+  return Number.isFinite(n)&&n>0?n:null;
+}
+function coLimit(cid){const c=S.companies.find(x=>x.id===cid);return c?normalizeLimit(c.maxMatch):null;}
+function coMatchCount(cid){return S.students.filter(s=>{const st=sts(s.id);return st.s==='matched'&&st.mw===cid;}).length;}
+function coCanMatch(cid){const lim=coLimit(cid);return !lim||coMatchCount(cid)<lim;}
+function coLimitLabel(cid){const lim=coLimit(cid), used=coMatchCount(cid);return lim?`媒合 ${used}/${lim} 人`:`媒合 ${used} 人 / 不限`;}
+function parseCoLine(line){
+  line=line.trim().replace(/\r/g,'');
+  if(!line)return null;
+  const parts=line.split(/[,，\t]/).map(x=>x.trim()).filter(Boolean);
+  let id=null,name='',maxMatch=null;
+  if(parts.length>=3){id=parts[0];name=parts[1];maxMatch=normalizeLimit(parts[2]);}
+  else if(parts.length===2){
+    const maybeLimit=normalizeLimit(parts[1]);
+    if(maybeLimit){name=parts[0];maxMatch=maybeLimit;}
+    else{id=parts[0];name=parts[1];}
+  }else{name=parts[0];}
+  return name?{id,name,maxMatch}:null;
+}
+function updateCoLimit(id,val){
+  const co=S.companies.find(c=>c.id===id);if(!co)return;
+  co.maxMatch=normalizeLimit(val);
+  save();renderImport();renderMgmt();renderDispGrid();renderPsSummary();
+}
+
+// ══════════════════════════════════════════════════
+//  IMPORT
+// ══════════════════════════════════════════════════
+function parseStLine(line){
+  line=line.trim().replace(/\r/g,'');
+  if(!line)return null;
+  const parts=line.split(/[\s,，\t]+/);
+  if(parts.length>=2){
+    return{id:parts[0].replace(/^0+/,'').padStart(2,'0'),name:parts.slice(1).join('')};
+  }
+  return null;
+}
+function importSt(){
+  const lines=document.getElementById('stText').value.split('\n');
+  let n=0;
+  lines.forEach(l=>{
+    const s=parseStLine(l);
+    if(!s)return;
+    const i=S.students.findIndex(x=>x.id===s.id);
+    if(i>=0)S.students[i]=s; else{S.students.push(s);n++;}
+  });
+  S.students.sort((a,b)=>a.id.localeCompare(b.id,undefined,{numeric:true}));
+  save();renderImport();renderMgmt();renderDispGrid();
+  toast(`匯入 ${n} 位新學生（共 ${S.students.length} 位）`,'ok');
+}
+function importStCsv(inp){
+  const f=inp.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=e=>{document.getElementById('stText').value=e.target.result;importSt();};
+  r.readAsText(f,'UTF-8');inp.value='';
+}
+function clearStudents(){
+  if(!confirm('確定清除所有學生？面試記錄也將清除。'))return;
+  S.students=[];S.statuses={};
+  save();renderImport();renderMgmt();toast('已清除學生','ok');
+}
+
+function importCo(){
+  const lines=document.getElementById('coText').value.split('\n');
+  let added=0, updated=0;
+  normalizeCompanies();
+  const idMap  =new Map(S.companies.map(c=>[c.id,   c]));
+  const nameMap=new Map(S.companies.map(c=>[c.name, c]));
+  let autoN=S.companies.length+1;
+  function nextAutoId(){
+    let id;
+    do{ id='C'+String(autoN).padStart(2,'0'); autoN++; }
+    while(idMap.has(id));
+    return id;
+  }
+  lines.forEach(l=>{
+    const parsed=parseCoLine(l);
+    if(!parsed)return;
+    let {id,name,maxMatch}=parsed;
+    if(nameMap.has(name)){
+      const co=nameMap.get(name);
+      co.maxMatch=maxMatch;
+      updated++;
+      return;
+    }
+    if(id&&idMap.has(id)){
+      const co=idMap.get(id);
+      nameMap.delete(co.name);co.name=name;co.maxMatch=maxMatch;nameMap.set(name,co);
+      updated++;
+      return;
+    }
+    if(!id||idMap.has(id))id=nextAutoId();
+    const co={id,name,maxMatch};
+    S.companies.push(co);idMap.set(id,co);nameMap.set(name,co);added++;
+  });
+  save();renderImport();renderMgmt();renderDispGrid();renderPsSummary();
+  toast(`匯入 ${added} 家新廠商，更新 ${updated} 家（共 ${S.companies.length} 家）`,'ok');
+}
+function importCoCsv(inp){
+  const f=inp.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=e=>{document.getElementById('coText').value=e.target.result;importCo();};
+  r.readAsText(f,'UTF-8');inp.value='';
+}
+function clearCompanies(){
+  if(!confirm('確定清除所有廠商？'))return;
+  S.companies=[];S.preSched={};
+  save();renderImport();toast('已清除廠商','ok');
+}
+
+// ══════════════════════════════════════════════════
+//  PRE-SCHEDULE
+// ══════════════════════════════════════════════════
+function renderPrePanel(){
+  const cid=document.getElementById('preCo').value;
+  const panel=document.getElementById('prePanel');
+  if(!cid){panel.style.display='none';return;}
+  panel.style.display='block';
+  curPsCo=cid;
+  const ps=S.preSched[cid]||{mode:'all',list:[]};
+  psMode=ps.mode||'all';
+  psChosen=new Set(ps.list||[]);
+  document.querySelector(`input[name="pm"][value="${psMode}"]`).checked=true;
+  document.getElementById('rAll').classList.toggle('on',psMode==='all');
+  document.getElementById('rSpec').classList.toggle('on',psMode==='spec');
+  document.getElementById('specArea').style.display=psMode==='spec'?'block':'none';
+  renderPsGrid();
+}
+function setPM(m){
+  psMode=m;
+  document.getElementById('rAll').classList.toggle('on',m==='all');
+  document.getElementById('rSpec').classList.toggle('on',m==='spec');
+  document.getElementById('specArea').style.display=m==='spec'?'block':'none';
+}
+function renderPsGrid(){
+  document.getElementById('psChkGrid').innerHTML=S.students.map(s=>`
+    <label class="chk-item ${psChosen.has(s.id)?'on':''}" id="psi_${s.id}">
+      <input type="checkbox" ${psChosen.has(s.id)?'checked':''} style="width:auto"
+        onchange="tglPS('${s.id}',this.checked)">
+      <span>${s.id}號 ${s.name}</span>
+    </label>`).join('');
+  updatePsCount();
+}
+function tglPS(sid,checked){
+  if(checked) psChosen.add(sid); else psChosen.delete(sid);
+  const el=document.getElementById('psi_'+sid);
+  if(el) el.classList.toggle('on',checked);
+  updatePsCount();
+}
+function updatePsCount(){document.getElementById('psSelCount').textContent=psChosen.size;}
+function psSelectAll(){S.students.forEach(s=>psChosen.add(s.id));renderPsGrid();}
+function psDeselectAll(){psChosen.clear();renderPsGrid();}
+function savePS(){
+  if(!curPsCo)return;
+  S.preSched[curPsCo]={mode:psMode,list:psMode==='spec'?[...psChosen]:[]};
+  save();renderPsSummary();toast('預排名單已儲存','ok');
+}
+function renderPsSummary(){
+  const el=document.getElementById('psSummary');
+  if(!S.companies.length){el.innerHTML='<p style="font-size:13px;color:var(--muted)">尚未設定廠商</p>';return;}
+  el.innerHTML=`<table class="tbl"><thead><tr><th>廠商</th><th>預排模式</th><th>可面試學生數</th></tr></thead><tbody>
+  ${S.companies.map(c=>{
+    const ps=S.preSched[c.id]||{mode:'all',list:[]};
+    const label=ps.mode==='all'?`<span class="badge b-blue">全班 ${S.students.length} 人</span>`:
+      `<span class="badge b-purple">指定 ${ps.list.length} 人</span>`;
+    return`<tr><td>${c.name}</td><td>${label}</td><td>${ps.mode==='all'?S.students.length:ps.list.length}</td></tr>`;
+  }).join('')}</tbody></table>`;
+}
+
+// ══════════════════════════════════════════════════
+//  INTERVIEW OPERATIONS
+// ══════════════════════════════════════════════════
+function startInterview(sid,cid){
+  const st=sts(sid);
+  if(st.s==='matched')return{ok:false,msg:'此同學已媒合'};
+  if(st.s==='interviewing')return{ok:false,msg:'面試中（'+coName(st.iw)+'）'};
+  if(!coCanMatch(cid))return{ok:false,msg:coName(cid)+' 已達確認媒合上限（'+coMatchCount(cid)+'/'+coLimit(cid)+'），不可再邀請面試'};
+  if(coBusy(cid))return{ok:false,msg:coName(cid)+' 目前正在面試中，一次只能面試一位'};
+  setSts(sid,'interviewing',cid);
+  addLog(coName(cid)+' 邀請 '+sid+'號 '+stName(sid)+' 面試');
+  pushAnn('interview',sid,cid);
+  save();return{ok:true};
+}
+function endInterview(sid,cid){
+  const st=sts(sid);
+  if(st.s!=='interviewing'||st.iw!==cid)return{ok:false,msg:'操作無效'};
+  setSts(sid,'available');
+  addLog(`${coName(cid)} 結束 ${sid}號 ${stName(sid)} 面試`);
+  save();return{ok:true};
+}
+function confirmMatch(sid,cid){
+  const st=sts(sid);
+  if(st.s!=='interviewing'||st.iw!==cid)return{ok:false,msg:'操作無效'};
+  if(!coCanMatch(cid))return{ok:false,msg:coName(cid)+' 已達確認媒合上限（'+coMatchCount(cid)+'/'+coLimit(cid)+'）'};
+  setSts(sid,'matched',null,cid);
+  addLog(`🎉 ${coName(cid)} × ${sid}號 ${stName(sid)} 媒合成功！`);
+  pushAnn('match',sid,cid);
+  save();return{ok:true};
+}
+
+// ══════════════════════════════════════════════════
+//  STAGE
+// ══════════════════════════════════════════════════
+function advanceStage(){
+  if(S.stage>=2){toast('已在第二階段','warn');return;}
+  if(!confirm('確定進入第二階段？未媒合的同學繼續面試，已媒合者不再參與。'))return;
+  S.stage=2;addLog('── 進入第二階段 ──');pushAnn('stage2',null,null);
+  save();renderAll();toast('已進入第二階段','ok');
+}
+function resetAll(){
+  if(!confirm('確定重置所有面試記錄？此操作不可恢復。'))return;
+  S.statuses={};S.log=[];S.anns=[];S.stage=1;
+  ANN_LIST.length=0;MQ_LIST.length=0;LAST_ANN='';sessionStorage.removeItem('ims_last_ann');stopVoice();
+  save();renderAll();renderMQ();toast('系統已重置','ok');
+}
+
+function pushAnn(type,sid,cid){
+  S.anns=[...S.anns,{id:uid(),type,sid,cid,ts:Date.now(),done:false}].slice(-60);
+}
+function processAnns(){
+  const pending=S.anns.filter(a=>!a.done&&a.id!==LAST_ANN);
+  if(!pending.length)return;
+  pending.forEach(a=>{
+    const c=annContent(a);
+    if(c){
+      pushMQ(`${c.icon} ${c.title}`);
+      if(c.kind==='match'){
+        for(let i=ANN_LIST.length-1;i>=0;i--){
+          if(ANN_LIST[i].kind==='inter'&&(ANN_LIST[i].sid||ANN_LIST[i].num)===c.sid)ANN_LIST.splice(i,1);
+        }
+      }
+      ANN_LIST.push(c);
+      if(ANN_LIST.length>MQ_MAX)ANN_LIST.shift();
+    }
+    if(S.cfg.voice)queueVoice(a);
+    a.done=true;LAST_ANN=a.id;
+    sessionStorage.setItem('ims_last_ann',a.id);
+  });
+  save();
+  if(!VSP)drainVQ();
+}
+
+// ── 跑馬燈播報系統 ──────────────────────────────────
+const MQ_LIST=[];
+const ANN_LIST=[];
+const MQ_MAX=20;
+const MQ_SEP='　　◆　　';
+const MQ_PPS=100; // 每秒捲動像素數
+
+function annContent(a){
+  const sn=S.students.find(x=>x.id===a.sid);
+  const cn=S.companies.find(x=>x.id===a.cid);
+  if(a.type==='interview')return{icon:'📢',
+    title:`${a.sid}號 ${sn?.name||''} 請前往 ${cn?.name||''} 面試`,
+    num:a.sid,sid:a.sid,cid:a.cid,name:sn?.name||'',cname:cn?.name||'',kind:'inter'};
+  if(a.type==='match')return{icon:'🎉',
+    title:`媒合成功！${cn?.name||''} × ${a.sid}號 ${sn?.name||''}`,
+    num:a.sid,sid:a.sid,cid:a.cid,name:sn?.name||'',cname:cn?.name||'',kind:'match'};
+  if(a.type==='stage2')return{icon:'🚩',
+    title:'進入第二階段面試',
+    num:'',name:'',cname:'',kind:'stage2'};
+  return null;
+}
+
+function pushMQ(txt){
+  if(!txt)return;
+  MQ_LIST.push(txt);
+  if(MQ_LIST.length>MQ_MAX)MQ_LIST.shift();
+  renderMQ();
+}
+
+function renderMQ(){
+  const n=S?.cfg?.mqCount||5;
+  const recent=MQ_LIST.slice(-n);
+  const seg=recent.length ? recent.join(MQ_SEP)+'　　' : '';
+  [['mqGInner','mqGA','mqGB'],['mqDInner','mqDA','mqDB']].forEach(([inn,a,b])=>{
+    const inner=document.getElementById(inn);
+    const sa=document.getElementById(a);
+    const sb=document.getElementById(b);
+    if(!inner||!sa||!sb)return;
+    if(!seg){sa.textContent='';sb.textContent='';inner.style.animation='none';return;}
+    sa.textContent=seg; sb.textContent=seg;
+    inner.style.animation='none';
+    inner.offsetWidth;
+    requestAnimationFrame(()=>{
+      const w=sa.offsetWidth;
+      if(!w)return;
+      inner.style.animation='mq-anim '+Math.max(5,w/MQ_PPS)+'s linear infinite';
+    });
+  });
+}
+
+function queueVoice(a){
+  const sn=S.students.find(x=>x.id===a.sid);
+  const cn=S.companies.find(x=>x.id===a.cid);
+  let txt='';
+  if(a.type==='interview'&&sn&&cn)
+    txt=`${a.sid}號，${sn.name}同學，請前往${cn.name}進行面試。`;
+  else if(a.type==='match'&&sn&&cn)
+    txt=`恭喜！${cn.name}與${a.sid}號${sn.name}同學，媒合成功！`;
+  else if(a.type==='stage2')
+    txt='第二階段面試開始，尚未媒合的同學請就位。';
+  if(!txt)return;
+  const rep=S.cfg.repeat||2;
+  const freq=a.type==='match'?880:550;
+  for(let i=0;i<rep;i++)VQ.push({txt,freq,first:i===0});
+}
+function drainVQ(){
+  if(!VQ.length){VSP=false;return;}
+  VSP=true;
+  const item=VQ.shift();
+  playBeep(item.freq,item.first,()=>{
+    const u=new SpeechSynthesisUtterance(item.txt);
+    u.lang='zh-TW';
+    u.rate=S.cfg.rate||0.85;
+    const uri=S.cfg.vUri;
+    if(uri){const v=speechSynthesis.getVoices().find(x=>x.voiceURI===uri);if(v)u.voice=v;}
+    u.onend=()=>setTimeout(drainVQ,700);
+    u.onerror=()=>setTimeout(drainVQ,300);
+    speechSynthesis.speak(u);
+  });
+}
+function playBeep(freq,playNow,cb){
+  if(!playNow){cb();return;}
+  try{
+    const ctx=new(window.AudioContext||window.webkitAudioContext)();
+    const osc=ctx.createOscillator(),g=ctx.createGain();
+    osc.connect(g);g.connect(ctx.destination);
+    osc.type='sine';osc.frequency.value=freq;
+    g.gain.setValueAtTime(0.35,ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.55);
+    osc.start();osc.stop(ctx.currentTime+0.55);
+    setTimeout(cb,650);
+  }catch{cb();}
+}
+function testVoice(type){
+  const sn=S.students[0]||{id:'01',name:'範例同學'};
+  const cn=S.companies[0]||{id:'x',name:'範例公司'};
+  stopVoice();
+  const fakeAnn={type,sid:sn.id,cid:cn.id};
+  queueVoice(fakeAnn);
+  drainVQ();
+}
+function stopVoice(){speechSynthesis.cancel();VQ=[];VSP=false;}
+function saveVoice(){
+  S.cfg.voice=document.getElementById('vEnable').checked;
+  S.cfg.repeat=parseInt(document.getElementById('vRepeat').value)||2;
+  S.cfg.rate=parseFloat(document.getElementById('vRate').value)||0.85;
+  S.cfg.vUri=document.getElementById('vVoice').value;
+  S.cfg.mqCount=parseInt(document.getElementById('mqCount')?.value)||5;
+  S.cfg.annCount=parseInt(document.getElementById('annCount')?.value)||6;
+  S.cfg.annSize=document.getElementById('annSize')?.value||'lg';
+  save();
+}
+function loadVoiceUI(){
+  document.getElementById('vEnable').checked=S.cfg.voice!==false;
+  document.getElementById('vRepeat').value=S.cfg.repeat||2;
+  document.getElementById('vRate').value=S.cfg.rate||0.85;
+  document.getElementById('vRateLbl').textContent=(S.cfg.rate||0.85).toFixed(2);
+  const mqEl=document.getElementById('mqCount');if(mqEl)mqEl.value=S.cfg.mqCount||5;
+  const annCountEl=document.getElementById('annCount');if(annCountEl)annCountEl.value=S.cfg.annCount||6;
+  const annSizeEl=document.getElementById('annSize');if(annSizeEl)annSizeEl.value=S.cfg.annSize||'lg';
+  const loadV=()=>{
+    const vv=speechSynthesis.getVoices().filter(v=>v.lang.startsWith('zh'));
+    document.getElementById('vVoice').innerHTML='<option value="">自動選擇</option>'+
+      vv.map(v=>`<option value="${v.voiceURI}" ${v.voiceURI===S.cfg.vUri?'selected':''}>${v.name} (${v.lang})</option>`).join('');
+  };
+  if(speechSynthesis.getVoices().length)loadV();
+  else speechSynthesis.addEventListener('voiceschanged',loadV);
+}
+
+// ══════════════════════════════════════════════════
+//  ADMIN OPERATIONS (management tab)
+// ══════════════════════════════════════════════════
+function adminStart(sid){
+  const sel=document.getElementById('asel_'+sid);
+  if(!sel)return;
+  const cid=sel.value;
+  const r=startInterview(sid,cid);
+  if(!r.ok){toast(r.msg,'err');return;}
+  renderMgmt();renderDispGrid();
+}
+function adminEnd(sid){
+  const st=sts(sid);
+  const r=endInterview(sid,st.iw);
+  if(!r.ok){toast(r.msg,'err');return;}
+  renderMgmt();renderDispGrid();
+}
+function adminMatch(sid){
+  const st=sts(sid);
+  const r=confirmMatch(sid,st.iw);
+  if(!r.ok){toast(r.msg,'err');return;}
+  processAnns();renderMgmt();renderDispGrid();
+}
+
+// ══════════════════════════════════════════════════
+//  RENDER
+// ══════════════════════════════════════════════════
+
+function shouldShowDispAnn(x){
+  if(!x)return false;
+  const sid=x.sid||x.num;
+  const st=sts(sid);
+  if(x.kind==='inter'){
+    if(st.s!=='interviewing')return false;
+    return !x.cid||st.iw===x.cid;
+  }
+  if(x.kind==='match'){
+    if(st.s!=='matched')return false;
+    return !x.cid||st.mw===x.cid;
+  }
+  return true;
+}
+function renderDispAnn(){
+  const el=document.getElementById('dispAnn');
+  if(!el)return;
+  const n=S?.cfg?.annCount||6;
+  const size=S?.cfg?.annSize||'lg';
+  el.dataset.annSize=size;
+  const recent=ANN_LIST.filter(shouldShowDispAnn).slice(-n).slice().reverse();
+  if(!recent.length){
+    el.innerHTML='<div class="dann-label">最新公告</div><div class="dann-empty">暫無公告</div>';
+    return;
+  }
+  const latest=recent[0];
+  const prev=recent.slice(1,n).filter(x=>x.num);
+  const bc=k=>k==='match'?'dann-match':'dann-inter';
+  const bigHtml=`<div class="dann-big ${bc(latest.kind)}">
+    <div class="dann-icon">${latest.icon}</div>
+    <div class="dann-num">${latest.num}</div>
+    <div class="dann-name">${latest.name}</div>
+    <div class="dann-co">${latest.cname}</div>
+    <div class="dann-badge">最新</div>
+  </div>`;
+  const smHtml=prev.map(x=>`<div class="dann-sm ${bc(x.kind)}">
+    <span class="dann-sm-icon">${x.icon}</span>
+    <span class="dann-sm-num">${x.num}</span>
+    <div class="dann-sm-r">
+      <div class="dann-sm-name">${x.name}</div>
+      <div class="dann-sm-co">${x.cname}</div>
+    </div>
+  </div>`).join('');
+  el.innerHTML=`<div class="dann-label">最新公告</div>
+    <div class="dann-wrap">
+      ${bigHtml}
+      <div class="dann-prev">${smHtml||'<div class="dann-empty-sm">等待更多公告…</div>'}</div>
+    </div>`;
+}
+function renderAll(){
+  renderImport();renderMgmt();renderDispGrid();renderDispAnn();renderPsSummary();
+  updateHdr();updateStage();
+}
+function updateHdr(){
+  document.getElementById('hdrStage').textContent=`第${S.stage}階段`;
+}
+function updateStage(){
+  const n=document.getElementById('mgmtStage');
+  if(n)n.textContent=`第 ${S.stage} 階段`;
+  const b=document.getElementById('advBtn');
+  if(b){b.disabled=S.stage>=2;b.textContent=S.stage>=2?'✅ 已進入第二階段':'🚩 進入第二階段';}
+  const ds=document.getElementById('dispStage');
+  if(ds)ds.textContent=`第${S.stage}階段`;
+}
+function renderImport(){
+  document.getElementById('stCount').textContent=S.students.length;
+  document.getElementById('coCount').textContent=S.companies.length;
+  document.getElementById('stList').innerHTML=S.students.length?
+    S.students.map(s=>`<div class="import-row">
+      <span><strong style="font-family:var(--mono)">${s.id}</strong> ${s.name}</span>
+      <button class="btn btn-danger btn-sm" onclick="delSt('${s.id}')">刪除</button>
+    </div>`).join(''):
+    '<p style="font-size:12px;color:var(--muted);padding:10px">尚未匯入</p>';
+  normalizeCompanies();
+  document.getElementById('coList').innerHTML=S.companies.length?
+    S.companies.map(c=>`<div class="import-row">
+      <div class="co-limit-row">
+        <div class="co-limit-main">
+          <div class="co-limit-name"><strong style="font-family:var(--mono)">${c.id}</strong> ${c.name}</div>
+          <div class="co-limit-meta">${coLimitLabel(c.id)}</div>
+        </div>
+        <input class="co-limit-input" type="number" min="1" placeholder="不限" value="${coLimit(c.id)||''}" title="match limit" onchange="updateCoLimit('${c.id}',this.value)">
+        <button class="btn btn-danger btn-sm" onclick="delCo('${c.id}')">刪除</button>
+      </div>
+    </div>`).join(''):
+    '<p style="font-size:12px;color:var(--muted);padding:10px">尚未匯入</p>';
+  // Update selects
+  const cOpts='<option value="">— 請選擇廠商 —</option>'+S.companies.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  document.getElementById('preCo').innerHTML=cOpts;
+}
+function delSt(id){
+  S.students=S.students.filter(x=>x.id!==id);
+  delete S.statuses[id];
+  save();renderImport();renderMgmt();
+}
+function delCo(id){
+  S.companies=S.companies.filter(x=>x.id!==id);
+  delete S.preSched[id];
+  save();renderImport();renderPsSummary();
+}
+function renderMgmt(){
+  const filter=document.getElementById('mgmtFilter')?.value||'';
+  document.querySelectorAll('[id^="asel_"]').forEach(sel=>{
+    adminCoChoice[sel.id.slice(5)]=sel.value;
+  });
+  const tots=S.students.length;
+  const matched=S.students.filter(s=>sts(s.id).s==='matched').length;
+  const inter=S.students.filter(s=>sts(s.id).s==='interviewing').length;
+  const wait=tots-matched-inter;
+  document.getElementById('statsRow').innerHTML=`
+    <div class="stat"><div class="stat-n" style="color:var(--primary)">${wait}</div><div class="stat-l">等待中</div></div>
+    <div class="stat"><div class="stat-n" style="color:var(--warn)">${inter}</div><div class="stat-l">面試中</div></div>
+    <div class="stat"><div class="stat-n" style="color:var(--success)">${matched}</div><div class="stat-l">已媒合</div></div>
+    <div class="stat"><div class="stat-n">${tots}</div><div class="stat-l">學生總數</div></div>`;
+
+  let students=S.students;
+  if(filter)students=students.filter(s=>sts(s.id).s===filter);
+
+  document.getElementById('mgmtGrid').innerHTML=students.map(s=>{
+    const st=sts(s.id);
+    const cls=st.s==='matched'?'match':st.s==='interviewing'?'inter':'avail';
+    let statTxt='等待面試';
+    if(st.s==='interviewing')statTxt=`▶ ${coName(st.iw)} 面試中`;
+    if(st.s==='matched')statTxt=`✓ 已媒合：${coName(st.mw)}`;
+    let acts='';
+    if(st.s==='available'){
+      const picked=adminCoChoice[s.id]&&S.companies.some(c=>c.id===adminCoChoice[s.id])?adminCoChoice[s.id]:(S.companies.find(c=>!coBusy(c.id))?.id||S.companies[0]?.id||'');
+      acts=`<div class="sact">
+        <select id="asel_${s.id}" onchange="adminCoChoice['${s.id}']=this.value" oninput="adminCoChoice['${s.id}']=this.value" style="flex:2;font-size:11px;padding:3px 5px">
+          ${S.companies.map(c=>`<option value="${c.id}" ${c.id===picked?'selected':''}>${c.name}</option>`).join('')}
+        </select>
+        <button class="btn btn-primary btn-sm" style="flex:1" onclick="adminStart('${s.id}')">邀請</button>
+      </div>`;
+    }else if(st.s==='interviewing'){
+      acts=`<div class="sact">
+        <button class="btn btn-ghost btn-sm" onclick="adminEnd('${s.id}')">結束</button>
+        <button class="btn btn-success btn-sm" onclick="adminMatch('${s.id}')">媒合✓</button>
+      </div>`;
+    }
+    return`<div class="scard ${cls}">
+      <div class="snum">${s.id}</div>
+      <div class="sname">${s.name}</div>
+      <div class="sstat">${statTxt}</div>
+      ${acts}
+    </div>`;
+  }).join('');
+
+  // log
+  document.getElementById('logBox').innerHTML=S.log.length?
+    S.log.map(l=>`<div class="log-row"><span class="log-t">${l.t}</span><span>${l.msg}</span></div>`).join(''):
+    '<p style="font-size:12px;color:var(--muted)">尚無記錄</p>';
+}
+function renderDispGrid(){
+  const matched=S.students.filter(s=>sts(s.id).s==='matched').length;
+  const inter=S.students.filter(s=>sts(s.id).s==='interviewing').length;
+  const ds=document.getElementById('dispStats');
+  if(ds)ds.textContent=`媒合 ${matched}/${S.students.length} 位　|　面試中 ${inter} 位`;
+  renderDispAnn();
+  const grid=document.getElementById('dispGrid');
+  // 套用欄數設定
+  const cols=S.dispCols||'auto';
+  applyDispCols(grid,cols);
+  // 同步欄數按鈕狀態
+  document.querySelectorAll('.disp-col-btn').forEach(b=>{
+    b.classList.toggle('on',String(b.dataset.cols)===String(cols));
+  });
+  grid.innerHTML=S.students.map(s=>{
+    const st=sts(s.id);
+    const cls=st.s==='matched'?'match':st.s==='interviewing'?'inter':'avail';
+    let dstat='等待';
+    if(st.s==='interviewing')dstat=`▶ ${coName(st.iw)}`;
+    if(st.s==='matched')dstat=`✓ ${coName(st.mw)}`;
+    return`<div class="dcard ${cls}">
+      <div class="dnum">${s.id}</div>
+      <div class="dname">${s.name}</div>
+      <div class="dstat">${dstat}</div>
+    </div>`;
+  }).join('');
+  // 全螢幕時重新校正行高
+  if(document.fullscreenElement||document.webkitFullscreenElement)
+    setTimeout(()=>requestAnimationFrame(fitDispGrid),50);
+}
+
+function applyDispCols(grid,cols){
+  if(!grid)return;
+  const isFS=!!(document.fullscreenElement||document.webkitFullscreenElement);
+  if(cols==='auto'){
+    const min=isFS?'100px':'155px';
+    grid.style.setProperty('grid-template-columns',`repeat(auto-fill,minmax(${min},1fr))`,'important');
+  }else{
+    grid.style.setProperty('grid-template-columns',`repeat(${cols},minmax(0,1fr))`,'important');
+  }
+}
+
+// ══════════════════════════════════════════════════
+//  UI HELPERS
+// ══════════════════════════════════════════════════
+function goTab(tab){
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('on',b.dataset.tab===tab));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('on',p.id==='panel-'+tab));
+  if(tab==='mgmt'){renderMgmt();}
+  if(tab==='disp'){renderDispGrid();}
+  if(tab==='pre'){renderPsSummary();}
+}
+function toast(msg,type='info'){
+  const el=document.createElement('div');
+  el.className=`toast ${type}`;el.textContent=msg;
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(()=>el.remove(),3200);
+}
+function toggleFS(){
+  const el=document.getElementById('dispWrap');
+  if(!document.fullscreenElement)el.requestFullscreen().catch(()=>{});
+  else document.exitFullscreen();
+}
+
+// ══════════════════════════════════════════════════
+//  SYNC
+// ══════════════════════════════════════════════════
+BC.onmessage=()=>{
+  load();renderAll();processAnns();
+};
+let lastTs=0;
+setInterval(()=>{
+  try{
+    const raw=localStorage.getItem(KEY);
+    if(!raw)return;
+    const p=JSON.parse(raw);
+    if(p.ts>lastTs){lastTs=p.ts;S=p;renderAll();processAnns();}
+  }catch{}
+},2000);
+
+// ══════════════════════════════════════════════════
+//  THEME
+// ══════════════════════════════════════════════════
+function toggleTheme(){
+  const isDark=document.documentElement.getAttribute('data-dark')==='1';
+  const next=isDark?'0':'1';
+  document.documentElement.setAttribute('data-dark',next);
+  const btn=document.getElementById('themeBtn');
+  if(btn)btn.textContent=next==='1'?'☀':'🌙';
+  localStorage.setItem('ims_theme',next);
+}
+
+// ══════════════════════════════════════════════════
+//  SHARE LINK (QR Code + Firebase room key)
+// ══════════════════════════════════════════════════
+// ── Firebase 初始化（admin 專用）────────────────────────────────
+const ADMIN_FB_CONFIG = {
+  apiKey:            "AIzaSyBVyKP-j7_CP3SRf8h3TYhZXLQuTdx0YQ0",
+  authDomain:        "project-4198352826191193750.firebaseapp.com",
+  databaseURL:       "https://project-4198352826191193750-default-rtdb.firebaseio.com",
+  projectId:         "project-4198352826191193750",
+  storageBucket:     "project-4198352826191193750.firebasestorage.app",
+  messagingSenderId: "221540560321",
+  appId:             "1:221540560321:web:8239153fe386e089b29340"
+};
+let adminDb = null;
+function getAdminDb(){
+  if(adminDb) return adminDb;
+  try{
+    const app = firebase.apps.length ? firebase.app() : firebase.initializeApp(ADMIN_FB_CONFIG);
+    adminDb = firebase.database(app);
+  }catch(e){ console.warn('admin firebase init failed',e); }
+  return adminDb;
+}
+
+// ── Modal ────────────────────────────────────────────────────────
+function openShareModal(){ document.getElementById('shareModal').classList.add('open'); }
+function closeShareModal(){ document.getElementById('shareModal').classList.remove('open'); }
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeShareModal(); });
+
+// ── Share Link: 資料存 Firebase，QR Code 含短 room key ──────────
+async function genShareLink(){
+  load();
+  if(!S.students.length){ toast('請先匯入學生名單','err'); return; }
+  if(!S.companies.length){ toast('請先匯入廠商名單','err'); return; }
+
+  const payload = {
+    stage:    S.stage || 1,
+    students: S.students,
+    companies:S.companies,
+    preSched: S.preSched || {},
+    cfg: {
+      voice:  !!(S.cfg && S.cfg.voice),
+      repeat: (S.cfg && S.cfg.repeat) || 2,
+      rate:   (S.cfg && S.cfg.rate)   || 0.85,
+      vUri:   (S.cfg && S.cfg.vUri)   || ''
+    }
+  };
+
+  const statusEl = document.getElementById('shareStatus');
+  const qrWrap   = document.getElementById('smodQrWrap');
+  const urlBox   = document.getElementById('shareUrlBox');
+  const infoEl   = document.getElementById('shareInfo');
+
+  statusEl.textContent = '⏳ 正在上傳資料到雲端…';
+  urlBox.style.display = 'none';
+  qrWrap.innerHTML = '<span style="font-size:12px;color:var(--muted)">產生中…</span>';
+
+  // 產生 8 碼 room key 並上傳到 Firebase
+  const key = Math.random().toString(36).slice(2,6) + Math.random().toString(36).slice(2,6);
+  const roomPath = 'ims_qr_init/' + key;
+
+  const db = getAdminDb();
+  if(!db){ toast('Firebase 連線失敗，請檢查網路','err'); return; }
+
+  try{
+    await db.ref(roomPath).set({ payload: JSON.stringify(payload), ts: Date.now() });
+    // 24小時後自動清除
+    setTimeout(()=>{ try{ db.ref(roomPath).remove(); }catch{} }, 86400000);
+  }catch(e){
+    statusEl.textContent = '❌ 雲端上傳失敗：' + e.message;
+    toast('上傳失敗','err');
+    return;
+  }
+
+  const base    = location.origin + location.pathname.replace(/[^/]*$/, '');
+  const finalUrl = base + 'index.html?room=' + key;
+
+  statusEl.textContent = '✅ 雲端連結產生成功！QR Code 清晰易掃';
+
+  // qrserver.com — img 標籤，無 CORS 問題
+  const sz = 180;
+  qrWrap.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=${sz}x${sz}&data=${encodeURIComponent(finalUrl)}&ecc=M&margin=2"
+    width="${sz}" height="${sz}" style="border-radius:8px;display:block"
+    onerror="this.parentNode.textContent='QR Code 載入失敗，請複製連結使用'">`;
+
+  urlBox.textContent = finalUrl;
+  urlBox.style.display = 'block';
+
+  const psKeys = Object.keys(payload.preSched || {});
+  const psInfo = psKeys.length ? `${psKeys.length} 間廠商已設定預排名單` : '⚠️ 尚未設定預排名單';
+  infoEl.innerHTML = `📦 <strong>${payload.students.length}</strong> 位學生 ／ `
+    + `<strong>${payload.companies.length}</strong> 間廠商 ／ ${psInfo}`;
+
+  toast('分享連結已產生 ✓','ok');
+}
+
+function copyShareUrl(){
+  const url = (document.getElementById('shareUrlBox').textContent || '').trim();
+  if(!url || url === '—') return;
+  const showCopied = () => {
+    const el = document.getElementById('copyMsg');
+    el.style.display = 'block';
+    setTimeout(() => { el.style.display = 'none'; }, 2500);
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText)
+    navigator.clipboard.writeText(url).then(showCopied).catch(() => fallbackCopy(url, showCopied));
+  else fallbackCopy(url, showCopied);
+}
+
+function fallbackCopy(text, cb){
+  const el = document.createElement('textarea');
+  el.value = text; el.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+  document.body.appendChild(el); el.select();
+  try{ document.execCommand('copy'); cb(); }catch{}
+  document.body.removeChild(el);
+}
+
+
+renderAll();
+loadVoiceUI();
+// Sync theme button
+(function(){const t=document.documentElement.getAttribute('data-dark');const b=document.getElementById('themeBtn');if(b)b.textContent=t==='1'?'☀':'🌙';})();
+processAnns();
+updateHdr();
+
+/* ── fitDispGrid：用 getBoundingClientRect 數實際欄數，確保撐滿 ── */
+function fitDispGrid(){
+  const grid=document.getElementById('dispGrid');
+  if(!grid)return;
+  const isFS=!!(document.fullscreenElement||document.webkitFullscreenElement);
+  if(!isFS){grid.style.gridTemplateRows='';return;}
+  const cards=[...grid.querySelectorAll('.dcard')];
+  if(!cards.length)return;
+  // 用第一張卡 top 值數同一行有幾欄
+  const firstTop=cards[0].getBoundingClientRect().top;
+  let numCols=0;
+  for(const c of cards){
+    if(Math.abs(c.getBoundingClientRect().top-firstTop)<3)numCols++;
+    else break;
+  }
+  numCols=Math.max(1,numCols);
+  const numRows=Math.ceil(cards.length/numCols);
+  grid.style.gridAutoRows='';
+  grid.style.gridTemplateRows=`repeat(${numRows},1fr)`;
+}
+
+/* ── 欄數選擇器 ── */
+function setDispCols(cols){
+  S.dispCols=cols;save();
+  renderDispGrid();
+  // 更新按鈕狀態
+  document.querySelectorAll('.disp-col-btn').forEach(b=>{
+    b.classList.toggle('on', String(b.dataset.cols)===String(cols));
+  });
+}
+
+// Restart marquee when entering fullscreen
+document.addEventListener('fullscreenchange',()=>{
+  setTimeout(renderMQ,100);
+  applyDispCols(document.getElementById('dispGrid'),S.dispCols||'auto');
+  if(document.fullscreenElement){
+    setTimeout(()=>requestAnimationFrame(fitDispGrid),200);
+  }else{
+    const grid=document.getElementById('dispGrid');
+    if(grid){grid.style.gridTemplateRows='';grid.style.gridAutoRows='';}
+  }
+});
+document.addEventListener('webkitfullscreenchange',()=>{
+  setTimeout(renderMQ,100);
+  applyDispCols(document.getElementById('dispGrid'),S.dispCols||'auto');
+  if(document.webkitFullscreenElement){
+    setTimeout(()=>requestAnimationFrame(fitDispGrid),200);
+  }else{
+    const grid=document.getElementById('dispGrid');
+    if(grid){grid.style.gridTemplateRows='';grid.style.gridAutoRows='';}
+  }
+});
+window.addEventListener('resize',()=>{
+  if(document.fullscreenElement||document.webkitFullscreenElement)
+    requestAnimationFrame(fitDispGrid);
+});
+</script>
+</body>
+</html>

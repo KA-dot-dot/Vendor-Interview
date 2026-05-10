@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="only light">
+<script>(function(){const t=localStorage.getItem("ims_theme")||"0";document.documentElement.setAttribute("data-dark",t==="1"?"1":"0");})();</script>
+<title>媒合面試系統 — 服務台</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<style>
+:root{
+  color-scheme:only light;
+  --bg:#f0f4f8;--surface:#fff;--border:#e2e8f0;--text:#1a202c;--muted:#718096;
+  --primary:#2b6cb0;--primary-light:#ebf4ff;--primary-border:#90cdf4;
+  --success:#276749;--success-light:#f0fff4;--success-border:#9ae6b4;
+  --warn:#744210;--warn-light:#fffbeb;--warn-border:#f6e05e;
+  --danger:#9b2c2c;--danger-light:#fff5f5;--danger-border:#feb2b2;
+  --gray-light:#f7fafc;--gray:#e2e8f0;
+  --radius:8px;--radius-lg:12px;
+  --font:-apple-system,'Microsoft JhengHei','PingFang TC','Noto Sans TC',sans-serif;
+  --mono:'Courier New',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0;color-scheme:only light}
+html,body{color-scheme:only light;background:#f0f4f8!important;background-image:linear-gradient(#f0f4f8,#f0f4f8)!important;min-height:100%}
+body{font-family:var(--font);background:var(--bg)!important;background-image:linear-gradient(var(--bg),var(--bg))!important;color:var(--text);font-size:14px;line-height:1.6;min-height:100vh}
+
+/* ── Login ── */
+#loginScreen{
+  min-height:100vh;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,#1a365d 0%,#2b6cb0 100%);
+}
+.login-card{
+  background:#fff;border-radius:20px;padding:36px 40px;width:100%;max-width:420px;
+  box-shadow:0 20px 60px rgba(0,0,0,.25);
+}
+.login-logo{font-size:40px;text-align:center;margin-bottom:8px}
+.login-title{font-size:22px;font-weight:800;text-align:center;color:#1a365d;margin-bottom:4px}
+.login-sub{font-size:13px;text-align:center;color:var(--muted);margin-bottom:28px}
+.login-step{margin-bottom:20px}
+.step-label{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.5px;margin-bottom:6px}
+input.big,select.big{
+  border:2px solid var(--border);border-radius:var(--radius-lg);padding:11px 16px;
+  font:inherit;font-size:15px;color:var(--text);background:#fff;outline:none;width:100%;transition:.15s;
+}
+input.big:focus,select.big:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(43,108,176,.15)}
+.login-btn{
+  width:100%;padding:13px;background:var(--primary);color:#fff;border:none;
+  border-radius:var(--radius-lg);font:inherit;font-size:16px;font-weight:700;
+  cursor:pointer;transition:.15s;margin-top:8px;
+}
+.login-btn:hover{background:#2c5282}
+.login-btn:disabled{opacity:.5;cursor:default}
+.login-hint{font-size:12px;color:var(--muted);text-align:center;margin-top:14px}
+
+/* ── Service screen ── */
+#svcScreen{display:none;background:#f0f4f8!important;background-image:linear-gradient(#f0f4f8,#f0f4f8)!important;min-height:100vh}
+
+.svc-hdr{background:#1a365d;color:#fff;padding:0 20px;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.svc-hdr-inner{display:flex;align-items:center;gap:12px;height:56px;max-width:1200px;margin:0 auto;flex-wrap:wrap}
+.svc-who{font-size:13px}
+.svc-who strong{font-size:15px}
+.svc-co{background:#2b6cb0;border-radius:20px;padding:5px 16px;font-size:14px;font-weight:700;white-space:nowrap}
+.svc-stage{background:rgba(255,255,255,.15);border-radius:20px;padding:4px 12px;font-size:12px;white-space:nowrap}
+.svc-logout{margin-left:auto;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:var(--radius);padding:5px 12px;cursor:pointer;font:inherit;font-size:12px;white-space:nowrap}
+.svc-logout:hover{background:rgba(255,255,255,.22)}
+
+.svc-body{max-width:1200px;margin:0 auto;padding:20px;background:#f0f4f8!important;background-image:linear-gradient(#f0f4f8,#f0f4f8)!important}
+
+/* Co status card */
+.co-status{
+  border-radius:var(--radius-lg);padding:14px 20px;margin-bottom:18px;
+  display:flex;align-items:center;gap:14px;border:2px solid;
+}
+.co-status.free{background:var(--primary-light);border-color:var(--primary-border)}
+.co-status.busy{background:var(--warn-light);border-color:var(--warn-border)}
+.co-status-icon{font-size:26px}
+.co-status-title{font-size:15px;font-weight:700}
+.co-status-sub{font-size:12px;color:var(--muted);margin-top:2px}
+
+/* Announcement */
+.ann{border-radius:var(--radius-lg);padding:14px 18px;margin-bottom:16px;display:flex;align-items:flex-start;gap:12px;animation:slideD .3s ease;border:2px solid;overflow:hidden;position:relative;z-index:20}
+/* 訊息卡容器：相對定位確保在學生格之上 */
+#svcAnn{position:relative;z-index:20}
+.ann.interview{background:var(--warn-light);border-color:var(--warn-border)}
+.ann.match{background:var(--success-light);border-color:var(--success-border)}
+.ann-icon{font-size:24px;line-height:1;flex-shrink:0}
+.ann-body{flex:1}
+.ann-title{font-size:15px;font-weight:700}
+.ann-sub{font-size:12px;color:var(--muted);margin-top:2px}
+.ann-footer{display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap}
+.ann-remain{font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:rgba(0,0,0,.1)}
+.ann-skip{font-size:11px;cursor:pointer;text-decoration:underline;opacity:.7;background:none;border:none;color:inherit;font:inherit;padding:0}
+.ann-skip:hover{opacity:1}
+.ann-prog{position:absolute;bottom:0;left:0;width:100%;height:4px;background:rgba(0,0,0,.08)}
+.ann-prog-fill{height:100%;width:100%;background:rgba(0,0,0,.25);transition:none}
+@keyframes slideD{from{transform:translateY(-6px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+/* Section title */
+.sec-title{font-size:14px;font-weight:700;margin-bottom:10px;color:var(--muted)}
+.legend{display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap}
+.leg{display:flex;align-items:center;gap:6px;font-size:12px}
+.leg-dot{width:12px;height:12px;border-radius:50%;border:2px solid}
+.leg-avail{background:var(--primary-light);border-color:var(--primary)}
+.leg-inter-me{background:var(--warn-light);border-color:var(--warn)}
+.leg-inter-ot{background:#f7fafc;border-color:var(--border)}
+.leg-match{background:var(--success-light);border-color:var(--success)}
+.leg-disable{background:#f7fafc;border-color:var(--border);opacity:.4}
+
+/* Student grid */
+.sgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:10px}
+.scard{border:2px solid;border-radius:var(--radius-lg);padding:13px;transition:.15s;background:#fff;position:relative}
+
+/* Clickable (pre-scheduled, available) */
+.scard.can-click{cursor:pointer}
+.scard.can-click:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(0,0,0,.1)}
+.scard.can-click:active{transform:translateY(0)}
+
+/* Status variants */
+.scard.avail{border-color:var(--primary-border);background:var(--primary-light)}
+.scard.inter-me{border-color:var(--warn-border);background:var(--warn-light)}
+.scard.inter-ot{border-color:var(--warn-border);background:var(--warn-light);opacity:.65}
+.scard.matched{border-color:var(--success-border);background:var(--success-light);opacity:.75}
+.scard.disabled{border-color:var(--border);background:var(--gray-light);opacity:.55;cursor:not-allowed}
+.scard.not-avail{border-color:var(--border);background:#fff;opacity:.6;cursor:not-allowed}
+
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.55}}
+.scard.inter-me{animation:blink 2s infinite}
+
+.snum{font-size:30px;font-weight:800;font-family:var(--mono);background:transparent!important}
+.sname{font-size:12px;margin-top:1px;background:transparent!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.sstat{font-size:11px;margin-top:4px;font-weight:500;background:transparent!important}
+/* 姓名顏色跟座號同色（依狀態） */
+.avail .snum,.avail .sname{color:var(--primary)}
+.inter-me .snum,.inter-me .sname{color:var(--warn)}
+.inter-ot .snum,.inter-ot .sname{color:var(--warn)}
+.matched .snum,.matched .sname{color:var(--success)}
+.disabled .snum,.disabled .sname,.not-avail .snum,.not-avail .sname{color:#a0aec0}
+
+.scard-badge{position:absolute;top:8px;right:8px;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px}
+.b-me{background:var(--warn-light);color:var(--warn);border:1px solid var(--warn-border)}
+.b-busy{background:#fef3c7;color:#92400e;border:1px solid #f6e05e}
+.b-done{background:var(--success-light);color:var(--success);border:1px solid var(--success-border)}
+.b-lock{background:var(--gray-light);color:var(--muted);border:1px solid var(--border)}
+.b-notps{background:#fff5f5;color:#c53030;border:1px solid var(--danger-border)}
+
+.sact{display:flex;gap:5px;margin-top:9px}
+.sact .btn{flex:1;font-size:11px;padding:5px 2px;justify-content:center;font-weight:600}
+
+/* Blocked message overlay */
+.scard-msg{font-size:11px;color:var(--muted);margin-top:5px;font-style:italic}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border-radius:var(--radius);font:inherit;font-size:13px;font-weight:500;cursor:pointer;border:1px solid transparent;transition:.15s;white-space:nowrap}
+.btn:disabled{opacity:.45;cursor:default}
+.btn-primary{background:var(--primary);color:#fff;border-color:var(--primary)}.btn-primary:not(:disabled):hover{background:#2c5282}
+.btn-success{background:#38a169;color:#fff;border-color:#38a169}.btn-success:not(:disabled):hover{background:#2f855a}
+.btn-ghost{background:#fff;color:var(--text);border-color:var(--border)}.btn-ghost:not(:disabled):hover{background:var(--bg)}
+.btn-warn{background:#d69e2e;color:#fff;border-color:#d69e2e}.btn-warn:not(:disabled):hover{background:#b7791f}
+.btn-danger{background:#e53e3e;color:#fff;border-color:#e53e3e}.btn-danger:not(:disabled):hover{background:#c53030}
+.btn-sm{padding:4px 10px;font-size:12px}
+
+/* Log */
+.log-box{border:1px solid var(--border);border-radius:var(--radius);padding:8px;max-height:160px;overflow-y:auto;margin-top:14px;background:#fff}
+.log-row{display:flex;gap:10px;padding:4px 0;border-bottom:1px solid #f7fafc;font-size:12px}
+.log-row:last-child{border-bottom:none}
+.log-t{color:var(--muted);white-space:nowrap;font-family:var(--mono)}
+
+/* Toast */
+#toasts{position:fixed;bottom:20px;right:20px;display:flex;flex-direction:column;gap:8px;z-index:9999}
+.toast{padding:10px 16px;border-radius:var(--radius);font-size:13px;font-weight:500;color:#fff;animation:tin .25s ease;box-shadow:0 4px 12px rgba(0,0,0,.2)}
+.toast.info{background:#2b6cb0}.toast.ok{background:#38a169}.toast.err{background:#e53e3e}.toast.warn{background:#d69e2e}
+@keyframes tin{from{transform:translateX(20px);opacity:0}to{transform:translateX(0);opacity:1}}
+
+/* Stage 2 banner */
+.stage2-notice{background:var(--warn-light);border:2px solid var(--warn-border);border-radius:var(--radius-lg);padding:12px 16px;margin-bottom:14px;font-size:13px;color:var(--warn)}
+
+/* Empty state */
+.empty{text-align:center;padding:40px 20px;color:var(--muted)}
+.empty-icon{font-size:40px;margin-bottom:8px}
+
+@media(max-width:600px){
+  .sgrid{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))}
+  .login-card{padding:24px 20px;border-radius:16px}
+  .svc-hdr-inner{height:auto;padding:10px 0;gap:8px}
+}
+
+/* ── Marquee ticker ── */
+.mq-bar{background:#0d1b2e;color:#e2e8f0;height:32px;overflow:hidden;display:flex;align-items:center;font-size:13px;border-bottom:1px solid rgba(255,255,255,.08)}
+.mq-label{flex-shrink:0;background:#2b6cb0;height:100%;padding:0 12px;display:flex;align-items:center;font-size:11px;font-weight:700;letter-spacing:.5px;white-space:nowrap}
+.mq-track{flex:1;overflow:hidden}
+.mq-inner{display:inline-flex;white-space:nowrap;will-change:transform}
+@keyframes mq-anim{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+/* ── Dark / Light theme ── */
+html[data-dark="1"]{
+  --bg:#0f172a;--surface:#1e293b;--border:#334155;
+  --text:#f1f5f9;--muted:#94a3b8;
+  --primary-light:#1e3358;--primary-border:#2b6cb0;
+  --success-light:#14291f;--success-border:#276749;
+  --warn-light:#2d1e08;--warn-border:#744210;
+  --danger-light:#2d1111;--danger-border:#9b2c2c;
+}
+html[data-dark="1"] .login-card{background:var(--surface);color:var(--text)}
+html[data-dark="1"] input,html[data-dark="1"] select{
+  background:var(--surface)!important;color:var(--text)!important;border-color:var(--border)!important;
+}
+html[data-dark="1"] .scard,html[data-dark="1"] .co-status{color:var(--text)}
+html[data-dark="1"] .scard.avail{background:var(--primary-light);border-color:var(--primary-border)}
+html[data-dark="1"] .scard.inter-me{background:var(--warn-light);border-color:var(--warn-border)}
+html[data-dark="1"] .scard.matched{background:var(--success-light);border-color:var(--success-border)}
+html[data-dark="1"] .scard.inter-ot{background:var(--warn-light);border-color:var(--warn-border)}
+html[data-dark="1"] .scard.disabled{background:var(--surface);border-color:var(--border)}
+html[data-dark="1"] .scard.not-avail{background:var(--surface);border-color:var(--border)}
+html[data-dark="1"] .log-box{background:var(--surface);border-color:var(--border)}
+html[data-dark="1"] .log-row{color:var(--text)}
+html[data-dark="1"] .login-btn{background:var(--primary)}
+html[data-dark="1"] #loginPreview{background:var(--primary-light)}
+html[data-dark="1"] #svcScreen,html[data-dark="1"] .svc-body{background:#0f172a!important;background-image:linear-gradient(#0f172a,#0f172a)!important}
+html[data-dark="1"] body{background:#0f172a!important;background-image:linear-gradient(#0f172a,#0f172a)!important}
+html[data-dark="1"] .svc-body .sec-title,html[data-dark="1"] .legend{color:var(--text)}
+
+/* Dark-mode readability: dark surfaces use white text; light controls keep dark text. */
+html[data-dark="1"] .login-card,
+html[data-dark="1"] .co-status,
+html[data-dark="1"] .ann,
+html[data-dark="1"] .scard,
+html[data-dark="1"] .log-row,
+html[data-dark="1"] .stage2-notice,
+html[data-dark="1"] .empty,
+html[data-dark="1"] .legend,
+html[data-dark="1"] .sec-title{
+  color:#fff!important;
+}
+html[data-dark="1"] .co-status *,
+html[data-dark="1"] .ann *,
+html[data-dark="1"] .scard *,
+html[data-dark="1"] .log-row *,
+html[data-dark="1"] .stage2-notice *,
+html[data-dark="1"] .empty *{
+  color:#fff!important;
+}
+html[data-dark="1"] .btn-ghost,
+html[data-dark="1"] .btn-ghost *,
+html[data-dark="1"] button:disabled,
+html[data-dark="1"] button:disabled *,
+html[data-dark="1"] .sact .btn-ghost,
+html[data-dark="1"] .sact .btn-ghost *{
+  background:#e5e7eb!important;
+  border-color:#cbd5e1!important;
+  color:#111827!important;
+}
+html[data-dark="1"] .btn-primary,
+html[data-dark="1"] .btn-success,
+html[data-dark="1"] .btn-danger,
+html[data-dark="1"] .btn-warn,
+html[data-dark="1"] .login-btn,
+html[data-dark="1"] .svc-hdr,
+html[data-dark="1"] .svc-hdr *,
+html[data-dark="1"] .mq-bar,
+html[data-dark="1"] .mq-label,
+html[data-dark="1"] .toast{
+  color:#fff!important;
+}
+html[data-dark="1"] input,
+html[data-dark="1"] select,
+html[data-dark="1"] textarea{
+  background:#111827!important;
+  color:#fff!important;
+  border-color:#475569!important;
+}
+html[data-dark="1"] .scard-badge,
+html[data-dark="1"] .badge{
+  background:#e5e7eb!important;
+  color:#111827!important;
+  border-color:#cbd5e1!important;
+}
+html[data-dark="1"] #loginPreview,
+html[data-dark="1"] #loginPreview *,
+html[data-dark="1"] .leg-dot{
+  color:#111827!important;
+}
+</style>
+</head>
+<body>
+
+<!-- ════════════ LOGIN ════════════ -->
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="login-logo">🏢</div>
+    <div class="login-title">媒合面試系統</div>
+    <div class="login-sub">服務台操作介面</div>
+
+    <div class="login-step">
+      <div class="step-label">STEP 1 ── 輸入你的座號</div>
+      <input class="big" type="text" id="loginId" placeholder="例如：08" maxlength="4"
+        oninput="onIdInput()" onkeydown="if(event.key==='Enter')tryLogin()">
+    </div>
+
+    <div class="login-step" id="coStep" style="display:none">
+      <div class="step-label">STEP 2 ── 選擇今天負責的廠商</div>
+      <select class="big" id="loginCo" onchange="onCoSelect()">
+        <option value="">— 請選擇廠商 —</option>
+      </select>
+    </div>
+
+    <div id="loginPreview" style="display:none;margin-bottom:14px;padding:12px;background:var(--primary-light);border-radius:var(--radius-lg);border:1px solid var(--primary-border)">
+      <div style="font-size:13px;color:var(--primary);font-weight:600" id="loginPreviewTxt"></div>
+    </div>
+
+    <button class="login-btn" id="loginBtn" onclick="tryLogin()" disabled>進入服務台</button>
+    <p class="login-hint" id="loginErr" style="color:#c53030"></p>
+    <p class="login-hint">服務台資料由管理端同步，請確保管理端已設定學生與廠商資料</p>
+  </div>
+</div>
+
+<!-- ════════════ SERVICE SCREEN ════════════ -->
+<div id="svcScreen">
+  <div class="svc-hdr">
+    <div class="svc-hdr-inner">
+      <span class="svc-who">服務同學：<strong id="svcWho">—</strong></span>
+      <span class="svc-co" id="svcCo">—</span>
+      <span class="svc-stage" id="svcStage">第1階段</span>
+      <div style="margin-left:auto;display:flex;gap:8px">
+        <button class="btn btn-sm" style="background:rgba(255,255,255,.12);color:#fff;border-color:rgba(255,255,255,.3)" onclick="refreshState()">↻ 同步</button>
+        <button id="themeBtn" onclick="toggleTheme()" title="深色/淺色" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:var(--radius);padding:5px 10px;cursor:pointer;font-size:15px">🌙</button>
+        <button class="svc-logout" onclick="logout()">登出</button>
+      </div>
+    </div>
+  </div>
+  <!-- ── 跑馬燈播報列 ── -->
+  <div class="mq-bar">
+    <span class="mq-label">📡 播報</span>
+    <div class="mq-track">
+      <div class="mq-inner" id="mqInner"><span id="mqA"></span><span id="mqB"></span></div>
+    </div>
+  </div>
+
+  <div class="svc-body">
+    <!-- Company status -->
+    <div class="co-status free" id="coStatus">
+      <div class="co-status-icon">✅</div>
+      <div>
+        <div class="co-status-title" id="coStatusTitle">廠商可面試</div>
+        <div class="co-status-sub" id="coStatusSub">點選下方學生開始邀請面試</div>
+      </div>
+    </div>
+
+    <!-- Announcement -->
+    <div id="svcAnn"></div>
+
+    <!-- Stage 2 notice -->
+    <div id="stage2Notice" class="stage2-notice" style="display:none">
+      🚩 <strong>第二階段面試</strong>：已媒合學生不再顯示可操作，其餘同學可繼續面試。
+    </div>
+
+    <!-- Legend -->
+    <div class="legend">
+      <div class="leg"><div class="leg-dot leg-avail"></div>可邀請（預排名單）</div>
+      <div class="leg"><div class="leg-dot leg-inter-me"></div>我方面試中</div>
+      <div class="leg"><div class="leg-dot leg-inter-ot"></div>他廠商面試中</div>
+      <div class="leg"><div class="leg-dot leg-match"></div>已媒合</div>
+      <div class="leg"><div class="leg-dot leg-disable" style="opacity:.5"></div>不在預排名單</div>
+    </div>
+
+    <!-- Student grid -->
+    <div id="svcEmpty" class="empty" style="display:none">
+      <div class="empty-icon">📋</div>
+      <p>尚未載入學生資料，請確認管理端已設定</p>
+    </div>
+    <div class="sgrid" id="svcGrid"></div>
+
+    <!-- Log -->
+    <div class="sec-title" style="margin-top:18px">操作記錄</div>
+    <div class="log-box" id="svcLog"></div>
+  </div>
+</div>
+
+<div id="toasts"></div>
+
+<script>
+// ══════════════════════════════════════════════════
+//  CONSTANTS & STATE
+// ══════════════════════════════════════════════════
+const KEY = 'ims_state_v2';
+const BC  = new BroadcastChannel('ims_bc_v2');
+
+let S  = null;   // shared state
+let ME = null;   // {id, coId, coName}
+
+// ── Firebase（直接沿用 teacher.html 的專案設定）────────────────────
+const FIREBASE_CONFIG = (() => {
+  try {
+    const raw = localStorage.getItem('firebase_config_v1');
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return {
+    apiKey:            "AIzaSyBVyKP-j7_CP3SRf8h3TYhZXLQuTdx0YQ0",
+    authDomain:        "project-4198352826191193750.firebaseapp.com",
+    databaseURL:       "https://project-4198352826191193750-default-rtdb.firebaseio.com",
+    projectId:         "project-4198352826191193750",
+    storageBucket:     "project-4198352826191193750.firebasestorage.app",
+    messagingSenderId: "221540560321",
+    appId:             "1:221540560321:web:8239153fe386e089b29340"
+  };
+})();
+
+let db = null;
+let fbRoom = null;   // e.g. "ims_room_a3f1b2"
+let fbStateRef = null;
+let fbStateListener = null;
+
+// 每個瀏覽器分頁有唯一 tabId（沿用 student.html 模式）
+const navEntry = performance.getEntriesByType && performance.getEntriesByType('navigation')[0];
+const isPageReload = navEntry ? navEntry.type === 'reload' : performance.navigation?.type === 1;
+let tabId = isPageReload ? (sessionStorage.getItem('ims_tab_id') || '') : '';
+if (!tabId) {
+  tabId = Date.now() + '_' + Math.random().toString(36).slice(2, 10);
+  sessionStorage.setItem('ims_tab_id', tabId);
+}
+// deviceId：同一台設備所有分頁共用（localStorage），用於擋同裝置多開
+let deviceId = localStorage.getItem('ims_device_id') || '';
+if (!deviceId) {
+  deviceId = Date.now() + '_' + Math.random().toString(36).slice(2, 10);
+  localStorage.setItem('ims_device_id', deviceId);
+}
+
+let seatRef = null;
+let seatHeartbeat = null;
+const STALE_LOCK_TIMEOUT = 45000; // 45 秒無心跳視為過期
+
+// ─── Firebase Init ────────────────────────────────────────────────
+function initFirebase() {
+  if (!FIREBASE_CONFIG || !FIREBASE_CONFIG.databaseURL) return false;
+  try {
+    if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+    db = firebase.database();
+    return true;
+  } catch(e) {
+    console.warn('Firebase init failed:', e);
+    return false;
+  }
+}
+
+// ─── Room key：從學生+廠商列表產生穩定的 hash，確保同一場媒合用同一個 room ──
+function computeRoomKey() {
+  const raw = (S.students || []).map(s => s.id).join(',')
+            + '|' + (S.companies || []).map(c => c.id).join(',');
+  let h = 5381;
+  for (let i = 0; i < raw.length; i++) { h = ((h << 5) + h) ^ raw.charCodeAt(i); h >>>= 0; }
+  return 'ims_' + h.toString(16).padStart(8, '0');
+}
+
+// ─── Firebase 狀態同步（唯讀監聽：由管理端或其他服務台寫入）─────────────
+function fbStartListen() {
+  if (!db || !fbRoom) return;
+  if (fbStateListener) { fbStateRef.off('value', fbStateListener); }
+  fbStateRef = db.ref(fbRoom + '/state');
+  fbStateListener = fbStateRef.on('value', snap => {
+    const remote = snap.val();
+    if (!remote || !remote.ts) return;
+    if (remote.ts <= (S.ts || 0)) return;  // 不比本地新，忽略
+    // 只更新動態欄位（不覆蓋學生/廠商清單基礎設定）
+    S.statuses = remote.statuses || S.statuses;
+    S.log      = remote.log      || S.log;
+    S.anns     = remote.anns     || S.anns;
+    S.stage    = remote.stage    || S.stage;
+    S.ts       = remote.ts;
+    try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e) {}
+    if (ME) renderService();
+    processAnns();
+  });
+}
+
+function fbStopListen() {
+  if (fbStateRef && fbStateListener) {
+    fbStateRef.off('value', fbStateListener);
+    fbStateListener = null;
+  }
+}
+
+// ─── Firebase 寫入（save 時呼叫，跨裝置即時同步）────────────────────────
+function fbSaveState() {
+  if (!db || !fbRoom) return;
+  const payload = {
+    statuses: S.statuses || {},
+    log:  (S.log  || []).slice(0, 60),
+    anns: (S.anns || []).slice(-60),
+    stage: S.stage || 1,
+    ts: Date.now()
+  };
+  db.ref(fbRoom + '/state').set(payload).catch(e => console.warn('fbSave error:', e));
+}
+
+// ─── 座位鎖定（claimSeat）── 同 student.html 的 transaction 模式 ────
+async function claimSeat(sid, cid) {
+  if (!db || !fbRoom) {
+    // 無 Firebase → 只用 sessionStorage 擋同瀏覽器多 tab
+    const sessKey = 'ims_lock_' + sid + '_' + cid;
+    if (sessionStorage.getItem(sessKey) && sessionStorage.getItem(sessKey) !== tabId)
+      return { ok: false, reason: '此瀏覽器已有相同座號+廠商的分頁正在使用' };
+    sessionStorage.setItem(sessKey, tabId);
+    return { ok: true };
+  }
+
+  const lockRef = db.ref(fbRoom + '/sessions/' + sid + '_' + cid);
+  const now = Date.now();
+
+  const result = await lockRef.transaction(current => {
+    if (current && current.tabId !== tabId) {
+      if (current.disconnected) {
+        // 對方已主動登出或關閉 → 可接手
+      } else if (current.deviceId === deviceId) {
+        // 同裝置不同 tab → 擋住
+        return undefined;
+      } else {
+        // 不同裝置：檢查心跳是否過期
+        const age = now - (current.lastSeen || current.joinedAt || 0);
+        if (age < STALE_LOCK_TIMEOUT) return undefined; // 仍在線 → 擋住
+        // 心跳過期 → 視為已離線，可接手
+      }
+    }
+    return {
+      sid, cid, deviceId, tabId,
+      joinedAt:    current && current.tabId === tabId ? (current.joinedAt || now) : now,
+      lastSeen:    now,
+      connected:   true,
+      disconnected:false,
+      disconnectedAt: null
+    };
+  });
+
+  if (!result.committed) {
+    const snap = await lockRef.once('value');
+    const val = snap.val();
+    const who = val ? `（${val.sid}號 × ${val.cid}，另一裝置使用中）` : '';
+    return { ok: false, reason: '此座號＋廠商組合已被另一裝置登入' + who + '，請等對方關閉視窗後再試' };
+  }
+
+  // 確認寫入成功
+  const confirm = await lockRef.once('value');
+  if (!confirm.val() || confirm.val().tabId !== tabId)
+    return { ok: false, reason: '座位鎖定失敗，請重試' };
+
+  seatRef = lockRef;
+  // 瀏覽器關閉時自動標記 disconnected
+  lockRef.onDisconnect().update({
+    connected: false, disconnected: true,
+    disconnectedAt: firebase.database.ServerValue.TIMESTAMP,
+    lastSeen: firebase.database.ServerValue.TIMESTAMP
+  });
+  startSeatHeartbeat();
+  return { ok: true };
+}
+
+async function releaseSeat(sid, cid) {
+  stopSeatHeartbeat();
+  if (!db || !fbRoom || !seatRef) return;
+  try {
+    await seatRef.onDisconnect().cancel();
+    const snap = await seatRef.once('value');
+    const val = snap.val();
+    if (val && (val.tabId === tabId || val.deviceId === deviceId)) {
+      await seatRef.remove();
+    }
+  } catch(e) {}
+  seatRef = null;
+  // 也清除 sessionStorage fallback
+  if (sid && cid) sessionStorage.removeItem('ims_lock_' + sid + '_' + cid);
+}
+
+function startSeatHeartbeat() {
+  stopSeatHeartbeat();
+  if (!seatRef) return;
+  const ping = () => seatRef && seatRef.update({ lastSeen: Date.now(), connected: true, disconnected: false, disconnectedAt: null }).catch(() => {});
+  ping();
+  seatHeartbeat = setInterval(ping, 5000);
+}
+function stopSeatHeartbeat() {
+  if (seatHeartbeat) { clearInterval(seatHeartbeat); seatHeartbeat = null; }
+}
+
+function defState(){
+  return{stage:1,students:[],companies:[],statuses:{},preSched:{},log:[],anns:[],cfg:{voice:true,repeat:2,rate:0.85,vUri:''},ts:0};
+}
+
+// ══════════════════════════════════════════════════
+//  STORAGE
+// ══════════════════════════════════════════════════
+function load(){
+  try{const d=localStorage.getItem(KEY);S=d?JSON.parse(d):defState();}
+  catch{S=defState();}
+  normalizeCompanies();
+}
+function save(){
+  S.ts = Date.now();
+  try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e) {}
+  try { BC.postMessage('u'); } catch(e) {}
+  fbSaveState();   // 寫入 Firebase，讓其他裝置即時同步
+}
+
+// ══════════════════════════════════════════════════
+//  HELPERS
+// ══════════════════════════════════════════════════
+function ts(){const d=new Date();return[d.getHours(),d.getMinutes(),d.getSeconds()].map(x=>String(x).padStart(2,'0')).join(':');}
+function uid(){return Math.random().toString(36).slice(2);}
+function sts(sid){return S.statuses[sid]||{s:'available',iw:null,mw:null};}
+function setSts(sid,s,iw=null,mw=null){S.statuses[sid]={s,iw,mw};}
+function coName(cid){return(S.companies.find(c=>c.id===cid)||{name:cid}).name;}
+function stName(sid){const s=S.students.find(x=>x.id===sid);return s?s.name:sid;}
+function addLog(msg){S.log=[{t:ts(),msg,id:uid()},...S.log].slice(0,120);}
+function normalizeLimit(v){
+  if(v===''||v===null||v===undefined)return null;
+  const n=parseInt(v,10);
+  return Number.isFinite(n)&&n>0?n:null;
+}
+function normalizeCompanies(){S.companies=(S.companies||[]).map(c=>({id:c.id,name:c.name,maxMatch:normalizeLimit(c.maxMatch)}));}
+function coLimit(cid){const c=S.companies.find(x=>x.id===cid);return c?normalizeLimit(c.maxMatch):null;}
+function coMatchCount(cid){return S.students.filter(s=>{const st=sts(s.id);return st.s==='matched'&&st.mw===cid;}).length;}
+function coCanMatch(cid){const lim=coLimit(cid);return !lim||coMatchCount(cid)<lim;}
+function coBusy(cid){return Object.values(S.statuses).some(x=>x.s==='interviewing'&&x.iw===cid);}
+function isPreScheduled(sid,cid){
+  const ps=S.preSched[cid];
+  if(!ps||ps.mode==='all')return true;
+  return ps.list.includes(sid);
+}
+
+// ══════════════════════════════════════════════════
+//  LOGIN
+// ══════════════════════════════════════════════════
+function onIdInput(){
+  const id=document.getElementById('loginId').value.trim();
+  const coStep=document.getElementById('coStep');
+  document.getElementById('loginErr').textContent='';
+  if(id.length<1){coStep.style.display='none';return;}
+  // Populate company list
+  const sel=document.getElementById('loginCo');
+  sel.innerHTML='<option value="">— 請選擇廠商 —</option>'+
+    S.companies.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  coStep.style.display='block';
+  document.getElementById('loginBtn').disabled=true;
+  document.getElementById('loginPreview').style.display='none';
+}
+function onCoSelect(){
+  const id=document.getElementById('loginId').value.trim().padStart(2,'0');
+  const cid=document.getElementById('loginCo').value;
+  if(!id||!cid){document.getElementById('loginBtn').disabled=true;return;}
+  const co=S.companies.find(c=>c.id===cid);
+  if(!co){document.getElementById('loginBtn').disabled=true;return;}
+  document.getElementById('loginPreviewTxt').textContent=`座號 ${id} 號 — 負責廠商：${co.name}`;
+  document.getElementById('loginPreview').style.display='block';
+  document.getElementById('loginBtn').disabled=false;
+  document.getElementById('loginErr').textContent='';
+}
+async function tryLogin(){
+  const rawId = document.getElementById('loginId').value.trim();
+  const cid   = document.getElementById('loginCo').value;
+  const errEl = document.getElementById('loginErr');
+  const btn   = document.getElementById('loginBtn');
+  if(!rawId){ errEl.textContent='請輸入座號'; return; }
+  if(!cid)  { errEl.textContent='請選擇廠商'; return; }
+  const sid = rawId.padStart(2,'0');
+  const co  = S.companies.find(c=>c.id===cid);
+  if(!co){ errEl.textContent='廠商不存在，請確認管理端設定'; return; }
+
+  btn.disabled = true;
+  errEl.textContent = '🔒 驗證座位中…';
+
+  // 嘗試取得座位鎖
+  const claim = await claimSeat(sid, cid);
+  if(!claim.ok){
+    errEl.textContent = '⚠️ ' + claim.reason;
+    btn.disabled = false;
+    return;
+  }
+
+  ME = { id: sid, coId: cid, coName: co.name };
+  btn.disabled = false;
+  errEl.textContent = '';
+  enterService();
+}
+async function logout(){
+  if(!confirm('確定登出？'))return;
+  if(ME){
+    await releaseSeat(ME.id, ME.coId);
+    fbStopListen();
+  }
+  ME=null;
+  document.getElementById('svcScreen').style.display='none';
+  document.getElementById('loginScreen').style.display='flex';
+  document.getElementById('loginId').value='';
+  document.getElementById('coStep').style.display='none';
+  document.getElementById('loginPreview').style.display='none';
+  document.getElementById('loginBtn').disabled=true;
+  document.getElementById('loginErr').textContent='';
+}
+function enterService(){
+  document.getElementById('loginScreen').style.display='none';
+  document.getElementById('svcScreen').style.display='block';
+  document.getElementById('svcWho').textContent=`${ME.id}號`;
+  document.getElementById('svcCo').textContent=ME.coName;
+  document.getElementById('svcStage').textContent=`第${S.stage}階段`;
+  // 若 fbRoom 尚未設定（例如未經 QR 掃描，直接用本地資料），也啟動監聽
+  if(db && !fbRoom){ fbRoom = computeRoomKey(); fbStartListen(); }
+  renderService();
+}
+
+// ══════════════════════════════════════════════════
+//  INTERVIEW OPERATIONS
+// ══════════════════════════════════════════════════
+function startInterview(sid){
+  const cid=ME.coId;
+  const st=sts(sid);
+  if(st.s==='matched'){toast('此同學已媒合，無法面試','warn');return;}
+  if(st.s==='interviewing'){toast(stName(sid)+' 面試中（'+coName(st.iw)+'），請稍候','warn');return;}
+  if(!coCanMatch(cid)){toast(ME.coName+' 已達確認媒合上限（'+coMatchCount(cid)+'/'+coLimit(cid)+'），不可再邀請面試','err');return;}
+  if(coBusy(cid)){
+    const busySid=Object.entries(S.statuses).find(([k,v])=>v.s==='interviewing'&&v.iw===cid);
+    const busyName=busySid?stName(busySid[0]):'某位同學';
+    toast(ME.coName+' 目前正在與 '+busyName+' 面試中，請先結束後再邀請新同學','err');
+    return;
+  }
+  if(!isPreScheduled(sid,cid)){toast('此同學不在預排名單內','err');return;}
+  setSts(sid,'interviewing',cid);
+  addLog(ME.coName+' 邀請 '+sid+'號 '+stName(sid)+' 面試');
+  pushAnn('interview',sid,cid);
+  save();renderService();
+}
+function endInterview(sid){
+  const st=sts(sid);
+  if(st.s!=='interviewing'||st.iw!==ME.coId){toast('操作無效','err');return;}
+  setSts(sid,'available');
+  addLog(`${ME.coName} 結束 ${sid}號 ${stName(sid)} 面試（未媒合）`);
+  save();renderService();
+}
+function confirmMatch(sid){
+  const st=sts(sid);
+  if(st.s!=='interviewing'||st.iw!==ME.coId){toast('操作無效','err');return;}
+  if(!coCanMatch(ME.coId)){toast(ME.coName+' 已達確認媒合上限（'+coMatchCount(ME.coId)+'/'+coLimit(ME.coId)+'）','err');return;}
+  if(!confirm(`確認 ${ME.coName} 與 ${sid}號 ${stName(sid)} 雙方已簽署回條並媒合成功？`))return;
+  setSts(sid,'matched',null,ME.coId);
+  addLog(`🎉 ${ME.coName} × ${sid}號 ${stName(sid)} 媒合成功！`);
+  pushAnn('match',sid,ME.coId);
+  save();renderService();
+}
+
+// ══════════════════════════════════════════════════
+//  ANNOUNCEMENTS  （服務台只顯示視覺橫幅，語音由管理端/投影顯示負責）
+// ══════════════════════════════════════════════════
+function pushAnn(type,sid,cid){
+  S.anns=[...S.anns,{id:uid(),type,sid,cid,ts:Date.now(),done:false}].slice(-60);
+}
+
+
+// ── 跑馬燈播報系統（服務台，僅視覺）─────────────────
+const SHOWN=new Set();
+const MQ_LIST=[];
+const MQ_MAX=20;
+const MQ_SEP='　　◆　　';
+const MQ_PPS=100;
+
+function annContent(a){
+  const sn=S.students.find(x=>x.id===a.sid);
+  const cn=S.companies.find(x=>x.id===a.cid);
+  if(a.type==='interview')return{icon:'📢',
+    title:`${a.sid}號 ${sn?.name||''} 請前往 ${cn?.name||''} 面試`};
+  if(a.type==='match')return{icon:'🎉',
+    title:`媒合成功！${cn?.name||''} × ${a.sid}號 ${sn?.name||''}`};
+  return null;
+}
+
+function pushMQ(txt){
+  if(!txt)return;
+  MQ_LIST.push(txt);
+  if(MQ_LIST.length>MQ_MAX)MQ_LIST.shift();
+  renderMQ();
+}
+
+function renderMQ(){
+  const seg=MQ_LIST.length ? MQ_LIST.join(MQ_SEP)+'　　' : '';
+  if(!seg)return;
+  const inner=document.getElementById('mqInner');
+  const sa=document.getElementById('mqA');
+  const sb=document.getElementById('mqB');
+  if(!inner||!sa||!sb)return;
+  sa.textContent=seg; sb.textContent=seg;
+  inner.style.animation='none';
+  inner.offsetWidth;
+  requestAnimationFrame(()=>{
+    const w=sa.offsetWidth;
+    if(!w)return;
+    inner.style.animation=`mq-anim ${Math.max(5,w/MQ_PPS)}s linear infinite`;
+  });
+}
+
+function processAnns(){
+  S.anns.filter(a=>!SHOWN.has(a.id)).forEach(a=>{
+    const c=annContent(a);
+    if(c) pushMQ(`${c.icon} ${c.title}`);
+    SHOWN.add(a.id);
+  });
+}
+
+//  RENDER
+// ══════════════════════════════════════════════════
+function renderService(){
+  if(!ME||!S)return;
+  const cid=ME.coId;
+
+  // Stage
+  document.getElementById('svcStage').textContent=`第${S.stage}階段`;
+  document.getElementById('stage2Notice').style.display=S.stage===2?'block':'none';
+
+  // Co status
+  const busy=coBusy(cid);
+  const atLimit=!coCanMatch(cid);
+  const coSt=document.getElementById('coStatus');
+  const coTitle=document.getElementById('coStatusTitle');
+  const coSub=document.getElementById('coStatusSub');
+  if(busy){
+    const busyEntry=Object.entries(S.statuses).find(([k,v])=>v.s==='interviewing'&&v.iw===cid);
+    const bname=busyEntry?busyEntry[0]+'號 '+stName(busyEntry[0]):'某位同學';
+    coSt.className='co-status busy';
+    coTitle.textContent='面試中：'+bname;
+    coSub.textContent='請等待面試結束後再邀請下一位同學';
+  }else if(atLimit){
+    coSt.className='co-status busy';
+    coTitle.textContent=ME.coName+' 已達媒合上限';
+    coSub.textContent='不可再邀請面試，也不可再確認媒合';
+  }else{
+    coSt.className='co-status free';
+    coTitle.textContent=ME.coName+' 可面試';
+    coSub.textContent='點選預排名單中的學生開始邀請面試';
+  }
+  // Students：只顯示預排名單內、正在面試中、或已媒合的學生
+  const students=S.students.filter(s=>{
+    const st=sts(s.id);
+    if(st.s==='interviewing'&&st.iw===cid)return true;  // 目前我方面試中
+    if(st.s==='matched'&&st.mw===cid)return true;        // 我方已媒合
+    return isPreScheduled(s.id,cid);                      // 預排名單內（含全班模式）
+  });
+  if(!students.length){
+    document.getElementById('svcEmpty').style.display='block';
+    document.getElementById('svcGrid').innerHTML='';
+    return;
+  }
+  document.getElementById('svcEmpty').style.display='none';
+
+  document.getElementById('svcGrid').innerHTML=students.map(s=>{
+    const st=sts(s.id);
+    const inPS=isPreScheduled(s.id,cid);
+    const isMyInter=st.s==='interviewing'&&st.iw===cid;
+    const isOtherInter=st.s==='interviewing'&&st.iw!==cid;
+    const isMatched=st.s==='matched';
+    const canClick=inPS&&st.s==='available'&&!busy&&!atLimit;
+
+    // Determine CSS class
+    let cls='scard ';
+    let badge='';
+    let statTxt='';
+    let actions='';
+    let extraMsg='';
+
+    if(isMatched){
+      cls+='matched';
+      badge=`<span class="scard-badge b-done">已媒合</span>`;
+      statTxt=`✓ ${coName(st.mw)}`;
+    }else if(isMyInter){
+      cls+='inter-me can-click';
+      badge=`<span class="scard-badge b-me">面試中</span>`;
+      statTxt=`▶ 我方面試中`;
+      actions=`<div class="sact">
+        <button class="btn btn-ghost btn-sm" onclick="endInterview('${s.id}')">結束面試</button>
+        <button class="btn btn-success btn-sm" onclick="confirmMatch('${s.id}')">✓ 確認媒合</button>
+      </div>`;
+    }else if(isOtherInter){
+      cls+='inter-ot';
+      badge=`<span class="scard-badge b-busy">佔用中</span>`;
+      statTxt=`▶ ${coName(st.iw)} 面試中`;
+      extraMsg='面試中，無法操作';
+    }else if(!inPS){
+      // Not in pre-schedule → gray, not clickable
+      cls+='disabled';
+      badge=`<span class="scard-badge b-notps">不在名單</span>`;
+      statTxt='等待';
+      extraMsg='不在預排名單';
+    }else if(atLimit){
+      cls+='disabled';
+      badge=`<span class="scard-badge b-lock">已達上限</span>`;
+      statTxt='等待';
+      extraMsg='廠商已達媒合上限';
+    }else if(busy&&!isMyInter){
+      // Scheduled but company is busy
+      cls+='not-avail';
+      badge=`<span class="scard-badge b-lock">需等候</span>`;
+      statTxt='等待';
+      extraMsg='廠商面試中，請先結束';
+    }else{
+      // Available and in pre-schedule
+      cls+='avail can-click';
+      statTxt='可邀請面試';
+    }
+
+    const clickable=isMyInter?false:canClick;
+    const onclk=clickable?`onclick="startInterview('${s.id}')" title="點選邀請 ${s.id}號 ${s.name} 面試"`:'';
+
+    return`<div class="${cls}" ${onclk}>
+      ${badge}
+      <div class="snum">${s.id}</div>
+      <div class="sname">${s.name}</div>
+      <div class="sstat">${statTxt}</div>
+      ${extraMsg?`<div class="scard-msg">${extraMsg}</div>`:''}
+      ${actions}
+    </div>`;
+  }).join('');
+
+  // Log
+  const logBox=document.getElementById('svcLog');
+  const myLogs=S.log.filter(l=>l.msg.includes(ME.coName)||l.msg.includes('階段')).slice(0,30);
+  logBox.innerHTML=myLogs.length?
+    myLogs.map(l=>`<div class="log-row"><span class="log-t">${l.t}</span><span>${l.msg}</span></div>`).join(''):
+    '<p style="font-size:12px;color:var(--muted)">尚無操作記錄</p>';
+}
+
+function refreshState(){
+  load();
+  if(ME){
+    document.getElementById('svcStage').textContent=`第${S.stage}階段`;
+    // Update company name in case it changed
+    const co=S.companies.find(c=>c.id===ME.coId);
+    if(co){ME.coName=co.name;document.getElementById('svcCo').textContent=co.name;}
+    renderService();
+    processAnns();
+  }else{
+    // Refresh company list in login
+    const sel=document.getElementById('loginCo');
+    if(sel&&document.getElementById('coStep').style.display!=='none'){
+      sel.innerHTML='<option value="">— 請選擇廠商 —</option>'+
+        S.companies.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+    }
+  }
+  toast('已同步最新資料','ok');
+}
+
+// ══════════════════════════════════════════════════
+//  TOAST
+// ══════════════════════════════════════════════════
+function toast(msg,type='info'){
+  const el=document.createElement('div');
+  el.className=`toast ${type}`;el.textContent=msg;
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(()=>el.remove(),3200);
+}
+
+// ══════════════════════════════════════════════════
+//  SYNC
+// ══════════════════════════════════════════════════
+BC.onmessage=()=>{
+  load();
+  if(ME)renderService();
+  processAnns();
+};
+let lastTs=0;
+setInterval(()=>{
+  try{
+    const raw=localStorage.getItem(KEY);if(!raw)return;
+    const p=JSON.parse(raw);
+    if(p.ts>lastTs){lastTs=p.ts;S=p;if(ME)renderService();processAnns();}
+  }catch{}
+},2000);
+
+// ══════════════════════════════════════════════════
+//  THEME
+// ══════════════════════════════════════════════════
+function toggleTheme(){
+  const isDark=document.documentElement.getAttribute('data-dark')==='1';
+  const next=isDark?'0':'1';
+  document.documentElement.setAttribute('data-dark',next);
+  const btn=document.getElementById('themeBtn');
+  if(btn)btn.textContent=next==='1'?'☀':'🌙';
+  localStorage.setItem('ims_theme',next);
+}
+
+// ══════════════════════════════════════════════════
+//  QR Code 資料載入（支援新版 Firebase room key 及舊版 hash）
+// ══════════════════════════════════════════════════
+
+// ── 共用：把 payload 寫入 localStorage 並初始化頁面 ───────────────
+function applyPayload(payload){
+  if(!payload||!Array.isArray(payload.students)||!Array.isArray(payload.companies))return false;
+  load();
+  S.stage=payload.stage||1;
+  S.students=payload.students;
+  S.companies=payload.companies;
+  S.preSched=payload.preSched||{};
+  if(payload.cfg)S.cfg=Object.assign(S.cfg||{},payload.cfg);
+  const newSt={};
+  payload.students.forEach(s=>{newSt[s.id]={s:'available',iw:null,mw:null};});
+  S.statuses=newSt;
+  S.log=[];S.anns=[];S.ts=Date.now();
+  try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){return false;}
+  if(db){ fbRoom=computeRoomKey(); fbStartListen(); }
+  const sel=document.getElementById('loginCo');
+  if(sel){
+    sel.innerHTML='<option value="">— 請選擇廠商 —</option>'+
+      S.companies.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  }
+  return true;
+}
+
+// ── 新版：?room=KEY → 從 Firebase 取資料 ────────────────────────
+(function detectRoomImport(){
+  const params=new URLSearchParams(location.search);
+  const roomKey=params.get('room');
+  if(!roomKey)return;
+  // 清除 URL 參數，避免重新整理再次觸發
+  history.replaceState(null,'',location.pathname);
+  // 等 Firebase 初始化後再讀
+  function tryFetch(retries){
+    if(!db){
+      if(retries>0) setTimeout(()=>tryFetch(retries-1),400);
+      return;
+    }
+    db.ref('ims_qr_init/'+roomKey).once('value').then(snap=>{
+      const val=snap.val();
+      if(!val||!val.payload){ console.warn('room key not found:',roomKey); return; }
+      try{
+        const payload=JSON.parse(val.payload);
+        applyPayload(payload);
+      }catch(e){ console.warn('room payload parse error',e); }
+    }).catch(e=>{ console.warn('firebase room fetch error',e); });
+  }
+  // 最多等 2 秒讓 Firebase 連上
+  setTimeout(()=>tryFetch(5), 200);
+})();
+
+// ── 舊版：#ims_init= 或 ?ims_init=（向下相容）────────────────────
+(function detectHashImport(){
+  const search=location.search;
+  const hash=location.hash;
+  const m=search.match(/[?&]ims_init=([A-Za-z0-9+/=_\-~.]+)/)||
+           hash.match(/[#&]ims_init=([A-Za-z0-9+/=_\-~.]+)/);
+  if(!m)return;
+  try{
+    let json;
+    try{json=LZString.decompressFromEncodedURIComponent(m[1]);}catch{}
+    if(!json||json==='null'){
+      try{json=decodeURIComponent(escape(atob(m[1])));}catch{}
+    }
+    if(!json)return;
+    const payload=JSON.parse(json);
+    applyPayload(payload);
+    history.replaceState(null,'',location.pathname);
+  }catch(e){ /* 解析失敗，維持正常登入流程 */ }
+})();
+
+// ══════════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════════
+load();
+initFirebase();   // 連接 Firebase（沿用 teacher.html 的專案）
+
+// 頁面關閉時自動釋放座位（Firebase onDisconnect 也會處理，這是雙保險）
+window.addEventListener('beforeunload', () => {
+  if(ME) releaseSeat(ME.id, ME.coId);
+});
+
+(function(){const t=document.documentElement.getAttribute('data-dark');const b=document.getElementById('themeBtn');if(b)b.textContent=t==='1'?'☀':'🌙';})();
+// Pre-populate company list if data already exists
+if(S.companies.length){
+  const sel=document.getElementById('loginCo');
+  sel.innerHTML='<option value="">— 請選擇廠商 —</option>'+
+    S.companies.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+}
+</script>
+</body>
+</html>
