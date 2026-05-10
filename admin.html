@@ -1105,11 +1105,7 @@ function processAnns(){
     const c=annContent(a);
     if(c){
       pushMQ(`${c.icon} ${c.title}`);
-      if(c.kind==='match'){
-        for(let i=ANN_LIST.length-1;i>=0;i--){
-          if(ANN_LIST[i].kind==='inter'&&(ANN_LIST[i].sid||ANN_LIST[i].num)===c.sid)ANN_LIST.splice(i,1);
-        }
-      }
+      // 不刪除 inter 卡，讓歷史記錄保留在右側小卡區
       ANN_LIST.push(c);
       if(ANN_LIST.length>MQ_MAX)ANN_LIST.shift();
     }
@@ -1150,11 +1146,7 @@ function rebuildAnnList(){
   S.anns.filter(a=>a.done).forEach(a=>{
     const c=annContent(a);
     if(!c)return;
-    if(c.kind==='match'){
-      for(let i=ANN_LIST.length-1;i>=0;i--){
-        if(ANN_LIST[i].kind==='inter'&&(ANN_LIST[i].sid||ANN_LIST[i].num)===c.sid)ANN_LIST.splice(i,1);
-      }
-    }
+    // 不刪除 inter 卡，保留完整歷史
     ANN_LIST.push(c);
     if(ANN_LIST.length>MQ_MAX)ANN_LIST.shift();
   });
@@ -1297,16 +1289,15 @@ function adminMatch(sid){
 
 function shouldShowDispAnn(x){
   if(!x)return false;
-  const sid=x.sid||x.num;
-  const st=sts(sid);
-  if(x.kind==='inter'){
-    if(st.s!=='interviewing')return false;
-    return !x.cid||st.iw===x.cid;
-  }
+  // match 類型：學生已媒合才顯示（確認是這家公司）
   if(x.kind==='match'){
+    const sid=x.sid||x.num;
+    const st=sts(sid);
     if(st.s!=='matched')return false;
     return !x.cid||st.mw===x.cid;
   }
+  // inter 類型：永遠顯示（面試結束後仍留在歷史區）
+  // stage2 類型：永遠顯示
   return true;
 }
 function renderDispAnn(){
