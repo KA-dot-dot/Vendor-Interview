@@ -1,4 +1,5 @@
-﻿<!DOCTYPE html>
+
+<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
@@ -6,6 +7,7 @@
 <meta name="color-scheme" content="only light">
 <script>(function(){const t=localStorage.getItem("ims_theme")||"0";document.documentElement.setAttribute("data-dark",t==="1"?"1":"0");})();</script>
 <title>媒合面試系統 — 管理端</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
 :root{
   color-scheme:only light;
@@ -464,6 +466,34 @@ html[data-dark="1"] #loginPreview{
   </div>
 </div>
 
+<!-- ════════════ 手機分享連結區 ════════════ -->
+<div id="shareWrap" style="max-width:1400px;margin:0 auto;padding:16px 20px 0">
+  <div style="background:linear-gradient(135deg,#ebf8ff 0%,#e6fffa 100%);border:2px solid var(--primary-border);border-radius:var(--radius-lg);padding:18px 20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+      <div>
+        <div style="font-size:15px;font-weight:700;margin-bottom:3px;color:#1a365d">📲 手機分享連結</div>
+        <div style="font-size:12px;color:var(--muted)">將學生名單、廠商、預排名單打包 → 手機掃描 QR Code 即可使用服務台</div>
+      </div>
+      <button class="btn btn-primary" onclick="genShareLink()" style="white-space:nowrap">🔗 產生 QR Code 與連結</button>
+    </div>
+    <div id="shareResult" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid var(--primary-border)">
+      <div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap">
+        <div id="qrContainer" style="background:#fff;padding:8px;border-radius:8px;border:1px solid var(--border);flex-shrink:0;min-width:196px;min-height:196px"></div>
+        <div style="flex:1;min-width:220px">
+          <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px">📋 分享連結（點擊複製）</div>
+          <div id="shareUrlBox" onclick="copyShareUrl()" title="點擊複製"
+            style="background:#fff;border:2px solid var(--primary-border);border-radius:8px;padding:10px 14px;font-size:11px;font-family:var(--mono);word-break:break-all;cursor:pointer;color:var(--primary);line-height:1.7"
+            onmouseenter="this.style.background='var(--primary-light)'"
+            onmouseleave="this.style.background='#fff'"></div>
+          <div id="copyMsg" style="font-size:12px;color:#38a169;margin-top:6px;display:none;font-weight:600">✓ 已複製到剪貼簿！</div>
+          <div style="font-size:13px;margin-top:10px" id="shareInfo"></div>
+          <div style="font-size:11px;color:#e53e3e;margin-top:8px;font-weight:600">⚠️ 每次修改設定後請重新產生，確保連結為最新版本</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ────────── 學生廠商 ────────── -->
 <div class="panel on wrap" id="panel-import">
   <div class="two">
@@ -516,7 +546,7 @@ html[data-dark="1"] #loginPreview{
     ⚠️ 匯入學生/廠商後請至「預排名單」頁設定各廠商可面試的學生範圍，服務台才能正常操作。
   </div>
   <div class="alert alert-info" style="margin-top:8px">
-    💡 <strong>跨裝置使用說明：</strong>兩個 HTML 檔須放在同一資料夾。可在檔案所在目錄執行 <code>python -m http.server 8080</code>，同網路裝置皆可用 <code>http://電腦IP:8080/service.html</code> 連線。
+    💡 <strong>使用說明：</strong>設定完學生、廠商與預排名單後，點擊上方「產生 QR Code 與連結」，學生用手機掃描即可直接使用服務台，不需同一台電腦。
   </div>
 </div>
 
@@ -1421,9 +1451,79 @@ function toggleTheme(){
 }
 
 // ══════════════════════════════════════════════════
-//  INIT
+//  SHARE LINK (QR Code)
 // ══════════════════════════════════════════════════
-load();
+function genShareLink(){
+  load();
+  if(!S.students.length){toast('請先匯入學生名單','err');return;}
+  if(!S.companies.length){toast('請先匯入廠商名單','err');return;}
+
+  // 只打包初始設定資料（不含面試狀態、記錄）
+  const payload={
+    stage: S.stage||1,
+    students: S.students,
+    companies: S.companies,
+    preSched: S.preSched||{},
+    cfg:{
+      voice:!!(S.cfg&&S.cfg.voice),
+      repeat:(S.cfg&&S.cfg.repeat)||2,
+      rate:(S.cfg&&S.cfg.rate)||0.85,
+      vUri:(S.cfg&&S.cfg.vUri)||''
+    }
+  };
+
+  let encoded;
+  try{encoded=btoa(unescape(encodeURIComponent(JSON.stringify(payload))));}
+  catch(e){toast('編碼失敗，請重試','err');return;}
+
+  const base=location.origin+location.pathname.replace(/[^/]*$/,'');
+  const url=base+'#ims_init='+encoded;
+
+  document.getElementById('shareResult').style.display='block';
+  document.getElementById('shareUrlBox').textContent=url;
+
+  const psKeys=Object.keys(payload.preSched||{});
+  const psInfo=psKeys.length?`${psKeys.length} 間廠商已設定預排名單`:'尚未設定預排名單（請至預排名單頁設定）';
+  document.getElementById('shareInfo').innerHTML=
+    `📦 包含：<strong>${payload.students.length}</strong> 位學生、`+
+    `<strong>${payload.companies.length}</strong> 間廠商、${psInfo}`;
+
+  // 產生 QR Code
+  const qrDiv=document.getElementById('qrContainer');
+  qrDiv.innerHTML='';
+  try{
+    new QRCode(qrDiv,{
+      text:url,width:180,height:180,
+      colorDark:'#1a365d',colorLight:'#ffffff',
+      correctLevel:QRCode.CorrectLevel.M
+    });
+  }catch(e){
+    qrDiv.innerHTML='<p style="font-size:11px;color:var(--muted);padding:20px 10px;text-align:center">QR Code 產生失敗<br>請直接複製下方連結</p>';
+  }
+  toast('分享連結已產生 ✓','ok');
+}
+
+function copyShareUrl(){
+  const url=document.getElementById('shareUrlBox').textContent;
+  if(!url)return;
+  const showCopied=()=>{
+    const msg=document.getElementById('copyMsg');
+    msg.style.display='block';
+    setTimeout(()=>{msg.style.display='none';},2500);
+  };
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(url).then(showCopied).catch(()=>fallbackCopy(url,showCopied));
+  }else{fallbackCopy(url,showCopied);}
+}
+function fallbackCopy(text,cb){
+  const el=document.createElement('textarea');
+  el.value=text;el.style.cssText='position:fixed;opacity:0;top:0;left:0';
+  document.body.appendChild(el);el.select();
+  try{document.execCommand('copy');cb();}catch{}
+  document.body.removeChild(el);
+}
+
+
 renderAll();
 loadVoiceUI();
 // Sync theme button
