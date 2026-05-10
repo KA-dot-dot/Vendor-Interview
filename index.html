@@ -512,45 +512,42 @@ function fbSaveState() {
 
 // ─── 座位鎖定（claimSeat）── 同座號只能一台裝置登入 ────
 async function claimSeat(sid, cid) {
-  const now = Date.now();
-  const localKey = 'ims_active_lock';
+  if (!db || !fbRoom) return { ok: true }; // 無 Firebase 時不擋
 
-  // ── 步驟1：localStorage 擋同裝置同瀏覽器多 tab ──
-  const existing = (() => { try { const v = localStorage.getItem(localKey); return v ? JSON.parse(v) : null; } catch { return null; } })();
-  if (existing && existing.sid !== sid && existing.tabId !== tabId) {
-    const age = now - (existing.lastSeen || 0);
-    if (age < 10000) {
-      return { ok: false, reason: `此裝置已由 ${existing.sid} 號登入，請先登出再切換` };
-    }
-  }
-
-  if (!db || !fbRoom) {
-    localStorage.setItem(localKey, JSON.stringify({ sid, tabId, lastSeen: now }));
-    return { ok: true };
-  }
-
-  // ── 步驟2：Firebase transaction 擋跨裝置同座號 ──
   const lockRef = db.ref(fbRoom + '/sessions/' + sid);
+  const now = Date.now();
+  const sessionId = tabId; // 用 tabId 當 sessionId
 
   const result = await lockRef.transaction(current => {
     if (current && current.tabId !== tabId) {
+      const lastSeen = Number(current.lastSeen || current.joinedAt || 0);
       if (current.disconnected) {
-        // 對方已登出 → 可接手
+        // 對方已主動登出/關閉 → 可接手
+      } else if (current.deviceId === deviceId) {
+        // 同裝置不同 tab → 直接擋住（同裝置只能一個 tab 登入）
+        return undefined;
       } else {
-        const age = now - (current.lastSeen || current.joinedAt || 0);
-        if (age < STALE_LOCK_TIMEOUT) return undefined; // 仍在線 → 擋住
+        // 不同裝置，檢查心跳是否過期（45秒）
+        if (lastSeen && now - lastSeen < STALE_LOCK_TIMEOUT) return undefined;
+        // 心跳過期 → 視為離線，可接手
       }
     }
     return {
       sid, cid, deviceId, tabId,
       joinedAt: current && current.tabId === tabId ? (current.joinedAt || now) : now,
-      lastSeen: now, connected: true, disconnected: false, disconnectedAt: null
+      lastSeen: now,
+      connected: true,
+      disconnected: false,
+      disconnectedAt: null
     };
   });
 
   if (!result.committed) {
     const snap = await lockRef.once('value');
     const val = snap.val();
+    if (val && val.deviceId === deviceId) {
+      return { ok: false, reason: '此裝置已有其他分頁登入，請關閉其他分頁後再試' };
+    }
     const who = val ? `（${val.sid}號 已在另一裝置登入）` : '';
     return { ok: false, reason: '此座號已被另一裝置登入' + who + '，請等對方關閉後再試' };
   }
@@ -560,7 +557,6 @@ async function claimSeat(sid, cid) {
     return { ok: false, reason: '座位鎖定失敗，請重試' };
 
   seatRef = lockRef;
-  localStorage.setItem(localKey, JSON.stringify({ sid, tabId, lastSeen: now }));
   lockRef.onDisconnect().update({
     connected: false, disconnected: true,
     disconnectedAt: firebase.database.ServerValue.TIMESTAMP,
@@ -572,11 +568,6 @@ async function claimSeat(sid, cid) {
 
 async function releaseSeat(sid) {
   stopSeatHeartbeat();
-  // 清除 localStorage 裝置鎖
-  try {
-    const v = localStorage.getItem('ims_active_lock');
-    if (v) { const p = JSON.parse(v); if (p.tabId === tabId) localStorage.removeItem('ims_active_lock'); }
-  } catch(e) {}
   if (!db || !fbRoom || !seatRef) return;
   try {
     await seatRef.onDisconnect().cancel();
@@ -594,10 +585,6 @@ function startSeatHeartbeat() {
   if (!seatRef) return;
   const ping = () => {
     if (seatRef) seatRef.update({ lastSeen: Date.now(), connected: true, disconnected: false, disconnectedAt: null }).catch(() => {});
-    // 同步更新 localStorage，讓同裝置其他 tab 知道此座位仍活著
-    if (ME) {
-      try { localStorage.setItem('ims_active_lock', JSON.stringify({ sid: ME.id, tabId, lastSeen: Date.now() })); } catch(e) {}
-    }
   };
   ping();
   seatHeartbeat = setInterval(ping, 5000);
