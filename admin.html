@@ -542,7 +542,7 @@ html[data-dark="1"] .smod-url{background:#0f172a;color:#93c5fd}
     ⚠️ 匯入學生/廠商後請至「預排名單」頁設定各廠商可面試的學生範圍，服務台才能正常操作。
   </div>
   <div class="alert alert-info" style="margin-top:8px">
-    💡 <strong>跨裝置使用說明：</strong>兩個 HTML 檔須放在同一資料夾。可在檔案所在目錄執行 <code>python -m http.server 8080</code>，同網路裝置皆可用 <code>http://電腦IP:8080/service.html</code> 連線。
+    💡 <strong>跨裝置使用說明：</strong>兩個 HTML 檔須放在同一資料夾。可在檔案所在目錄執行 <code>python -m http.server 8080</code>，同網路裝置皆可用 <code>http://電腦IP:8080/index.html</code> 連線。
   </div>
 </div>
 
@@ -1659,7 +1659,7 @@ async function genShareLink(){
   }
 
   const base     = location.origin + location.pathname.replace(/[^/]*$/, '');
-  const finalUrl = base + 'service.html?room=' + key;
+  const finalUrl = base + 'index.html?room=' + key;
 
   statusEl.textContent = '✅ 雲端連結產生成功！QR Code 清晰易掃';
 
