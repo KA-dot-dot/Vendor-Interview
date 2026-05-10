@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -1101,6 +1102,23 @@ function annContent(a){
   return null;
 }
 
+// 頁面重整後從已完成公告重建 ANN_LIST，確保投影媒合資訊卡不消失
+function rebuildAnnList(){
+  ANN_LIST.length=0;
+  if(!S||!S.anns)return;
+  S.anns.filter(a=>a.done).forEach(a=>{
+    const c=annContent(a);
+    if(!c)return;
+    if(c.kind==='match'){
+      for(let i=ANN_LIST.length-1;i>=0;i--){
+        if(ANN_LIST[i].kind==='inter'&&(ANN_LIST[i].sid||ANN_LIST[i].num)===c.sid)ANN_LIST.splice(i,1);
+      }
+    }
+    ANN_LIST.push(c);
+    if(ANN_LIST.length>MQ_MAX)ANN_LIST.shift();
+  });
+}
+
 function pushMQ(txt){
   if(!txt)return;
   MQ_LIST.push(txt);
@@ -1597,6 +1615,7 @@ function fallbackCopy(text, cb){
 }
 
 
+rebuildAnnList();   // 頁面重整後恢復投影公告卡
 renderAll();
 loadVoiceUI();
 // Sync theme button
