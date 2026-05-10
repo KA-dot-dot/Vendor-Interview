@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -281,6 +282,20 @@ html[data-dark="1"] .leg-dot{
 </style>
 </head>
 <body>
+
+<!-- ════════════ IMPORT CONFIRM ════════════ -->
+<div id="importScreen" style="display:none;min-height:100vh;align-items:center;justify-content:center;background:linear-gradient(135deg,#1a365d 0%,#2b6cb0 100%)">
+  <div class="login-card" style="text-align:center">
+    <div style="font-size:48px;margin-bottom:8px">📲</div>
+    <div class="login-title" style="margin-bottom:4px">載入老師端設定</div>
+    <div class="login-sub" style="margin-bottom:20px">掃描 QR Code 取得以下資料</div>
+    <div id="importInfo"
+      style="background:var(--primary-light);border:1px solid var(--primary-border);border-radius:var(--radius-lg);padding:16px 20px;margin-bottom:20px;font-size:14px;line-height:2.2;text-align:left">
+    </div>
+    <button class="login-btn" onclick="confirmImport()">✅ 確認，進入服務台</button>
+    <p class="login-hint" style="margin-top:10px;color:#c53030" id="importErr"></p>
+  </div>
+</div>
 
 <!-- ════════════ LOGIN ════════════ -->
 <div id="loginScreen">
@@ -762,6 +777,73 @@ function toggleTheme(){
   const btn=document.getElementById('themeBtn');
   if(btn)btn.textContent=next==='1'?'☀':'🌙';
   localStorage.setItem('ims_theme',next);
+}
+
+// ══════════════════════════════════════════════════
+//  HASH DATA IMPORT（QR Code 掃描進入）
+// ══════════════════════════════════════════════════
+(function detectHashImport(){
+  const hash=location.hash;
+  const m=hash.match(/[#&]ims_init=([A-Za-z0-9+/=]+)/);
+  if(!m)return;
+  try{
+    const json=decodeURIComponent(escape(atob(m[1])));
+    const payload=JSON.parse(json);
+    if(!Array.isArray(payload.students)||!Array.isArray(payload.companies))return;
+
+    window._pendingImport=payload;
+
+    // 隱藏登入畫面，顯示確認畫面
+    document.getElementById('loginScreen').style.display='none';
+    const scr=document.getElementById('importScreen');
+    scr.style.display='flex';
+
+    const psCount=Object.keys(payload.preSched||{}).length;
+    document.getElementById('importInfo').innerHTML=
+      `👨‍🎓 <strong>${payload.students.length}</strong> 位學生<br>`+
+      `🏭 <strong>${payload.companies.length}</strong> 間廠商<br>`+
+      `📋 <strong>${psCount}</strong> 間廠商已設定預排名單<br>`+
+      `🚩 起始階段：第 <strong>${payload.stage||1}</strong> 階段`;
+  }catch(e){
+    // 解析失敗，繼續正常登入流程
+  }
+})();
+
+function confirmImport(){
+  const payload=window._pendingImport;
+  if(!payload){return;}
+
+  // 合併進 state（保留空白的 statuses）
+  load();
+  S.stage=payload.stage||1;
+  S.students=payload.students;
+  S.companies=payload.companies;
+  S.preSched=payload.preSched||{};
+  if(payload.cfg)S.cfg=Object.assign(S.cfg||{},payload.cfg);
+
+  // 初始化所有學生狀態為 available
+  const newSt={};
+  payload.students.forEach(s=>{newSt[s.id]={s:'available',iw:null,mw:null};});
+  S.statuses=newSt;
+  S.log=[];S.anns=[];S.ts=Date.now();
+
+  try{localStorage.setItem(KEY,JSON.stringify(S));}
+  catch(e){document.getElementById('importErr').textContent='儲存失敗，請確認瀏覽器允許本地儲存';return;}
+
+  // 移除 hash，避免重新整理再次觸發
+  history.replaceState(null,'',location.pathname+location.search);
+
+  // 顯示登入畫面，填充廠商選單
+  document.getElementById('importScreen').style.display='none';
+  document.getElementById('loginScreen').style.display='flex';
+
+  load();
+  const sel=document.getElementById('loginCo');
+  if(sel){
+    sel.innerHTML='<option value="">— 請選擇廠商 —</option>'+
+      S.companies.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  }
+  toast('資料載入成功，請輸入座號與選擇廠商','ok');
 }
 
 // ══════════════════════════════════════════════════
