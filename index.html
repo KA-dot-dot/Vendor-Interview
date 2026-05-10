@@ -466,6 +466,7 @@ function fbStartListen() {
     const remote = snap.val();
     if (!remote || !remote.ts) return;
     if (remote.ts <= (S.ts || 0)) return;  // 不比本地新，忽略
+    const prevStage = S.stage || 1;
     // 只更新動態欄位（不覆蓋學生/廠商清單基礎設定）
     S.statuses = remote.statuses || S.statuses;
     S.log      = remote.log      || S.log;
@@ -475,6 +476,17 @@ function fbStartListen() {
     try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e) {}
     if (ME) renderService();
     processAnns();
+    // ── 進入第二階段：未媒合的座號自動釋放鎖定 ──
+    if (prevStage === 1 && S.stage === 2 && ME) {
+      const mySt = S.statuses[ME.id];
+      if (!mySt || mySt.s !== 'matched') {
+        // 未媒合 → 釋放座位鎖，讓學生可以重新登入或換廠商
+        releaseSeat(ME.id).then(() => {
+          seatRef = null;
+        });
+        toast('已進入第二階段，座位已釋放', 'ok');
+      }
+    }
   }, err => {
     console.warn('Firebase listener error:', err);
     if (fbReconnectTimer) clearTimeout(fbReconnectTimer);
@@ -949,16 +961,35 @@ function renderService(){
 }
 
 function refreshState(){
-  load();
+  // 先強制從 Firebase 拉取最新資料
+  if(db && fbRoom){
+    db.ref(fbRoom + '/state').once('value').then(snap => {
+      const remote = snap.val();
+      if(remote && remote.ts && remote.ts > (S.ts || 0)){
+        S.statuses = remote.statuses || S.statuses;
+        S.log      = remote.log      || S.log;
+        S.anns     = remote.anns     || S.anns;
+        S.stage    = remote.stage    || S.stage;
+        S.ts       = remote.ts;
+        try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e) {}
+        applyRefresh();
+      } else {
+        applyRefresh();
+      }
+    }).catch(() => { load(); applyRefresh(); });
+  } else {
+    load();
+    applyRefresh();
+  }
+}
+function applyRefresh(){
   if(ME){
     document.getElementById('svcStage').textContent=`第${S.stage}階段`;
-    // Update company name in case it changed
     const co=S.companies.find(c=>c.id===ME.coId);
     if(co){ME.coName=co.name;document.getElementById('svcCo').textContent=co.name;}
     renderService();
     processAnns();
   }else{
-    // Refresh company list in login
     const sel=document.getElementById('loginCo');
     if(sel&&document.getElementById('coStep').style.display!=='none'){
       sel.innerHTML='<option value="">— 請選擇廠商 —</option>'+
