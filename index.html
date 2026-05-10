@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -754,7 +755,17 @@ function pushAnn(type,sid,cid){
 
 
 // ── 跑馬燈播報系統（服務台，僅視覺）─────────────────
-const SHOWN=new Set();
+// SHOWN 存 sessionStorage，重整後不重播舊公告
+const SHOWN_KEY='ims_shown_ids';
+function shownLoad(){
+  try{const r=sessionStorage.getItem(SHOWN_KEY);return r?new Set(JSON.parse(r)):new Set();}
+  catch{return new Set();}
+}
+function shownAdd(id){
+  SHOWN.add(id);
+  try{sessionStorage.setItem(SHOWN_KEY,JSON.stringify([...SHOWN]));}catch{}
+}
+const SHOWN=shownLoad();
 const MQ_LIST=[];
 const MQ_MAX=20;
 const MQ_SEP='　　◆　　';
@@ -798,7 +809,7 @@ function processAnns(){
   S.anns.filter(a=>!SHOWN.has(a.id)).forEach(a=>{
     const c=annContent(a);
     if(c) pushMQ(`${c.icon} ${c.title}`);
-    SHOWN.add(a.id);
+    shownAdd(a.id);
   });
 }
 
