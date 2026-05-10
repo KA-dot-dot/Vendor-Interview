@@ -780,13 +780,17 @@ function computeRoomKey() {
 // 管理端：監聽 Firebase（讓服務台的操作即時反映到投影顯示）
 let fbStateRef = null;
 let fbStateListener = null;
+let fbLastReceived = 0;
+let fbReconnectTimer = null;
 function fbStartListen() {
   if (!db) return;
   if (!fbRoom && S.students.length) fbRoom = computeRoomKey();
   if (!fbRoom) return;
   if (fbStateListener) { fbStateRef.off('value', fbStateListener); }
   fbStateRef = db.ref(fbRoom + '/state');
+  fbLastReceived = Date.now();
   fbStateListener = fbStateRef.on('value', snap => {
+    fbLastReceived = Date.now();
     const remote = snap.val();
     if (!remote || !remote.ts) return;
     if (remote.ts <= (S.ts || 0)) return;
@@ -797,7 +801,18 @@ function fbStartListen() {
     S.ts       = remote.ts;
     try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e) {}
     renderAll(); processAnns();
+  }, err => {
+    console.warn('Firebase listener error:', err);
+    if (fbReconnectTimer) clearTimeout(fbReconnectTimer);
+    fbReconnectTimer = setTimeout(() => fbStartListen(), 30000);
   });
+  if (fbReconnectTimer) clearInterval(fbReconnectTimer);
+  fbReconnectTimer = setInterval(() => {
+    if (Date.now() - fbLastReceived > 90000) {
+      console.warn('Firebase heartbeat timeout, reconnecting…');
+      fbStartListen();
+    }
+  }, 30000);
 }
 
 // 管理端寫入 Firebase，讓服務台跨裝置即時收到
@@ -1306,13 +1321,13 @@ function renderDispAnn(){
   const n=S?.cfg?.annCount||6;
   const size=S?.cfg?.annSize||'lg';
   el.dataset.annSize=size;
-  const recent=ANN_LIST.filter(shouldShowDispAnn).slice(-n).slice().reverse();
+  const recent=ANN_LIST.filter(shouldShowDispAnn).slice(-n).reverse();
   if(!recent.length){
     el.innerHTML='<div class="dann-label">最新公告</div><div class="dann-empty">暫無公告</div>';
     return;
   }
   const latest=recent[0];
-  const prev=recent.slice(1,n).filter(x=>x.num);
+  const prev=recent.slice(1);  // 其餘全部顯示為小卡，不再二次限制
   const bc=k=>k==='match'?'dann-match':'dann-inter';
   const bigHtml=`<div class="dann-big ${bc(latest.kind)}">
     <div class="dann-icon">${latest.icon}</div>
