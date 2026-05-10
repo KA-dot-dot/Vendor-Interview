@@ -984,61 +984,76 @@ function toggleTheme(){
 }
 
 // ══════════════════════════════════════════════════
-//  HASH DATA IMPORT（QR Code 掃描 → 靜默載入）
+//  QR Code 資料載入（支援新版 Firebase room key 及舊版 hash）
 // ══════════════════════════════════════════════════
+
+// ── 共用：把 payload 寫入 localStorage 並初始化頁面 ───────────────
+function applyPayload(payload){
+  if(!payload||!Array.isArray(payload.students)||!Array.isArray(payload.companies))return false;
+  load();
+  S.stage=payload.stage||1;
+  S.students=payload.students;
+  S.companies=payload.companies;
+  S.preSched=payload.preSched||{};
+  if(payload.cfg)S.cfg=Object.assign(S.cfg||{},payload.cfg);
+  const newSt={};
+  payload.students.forEach(s=>{newSt[s.id]={s:'available',iw:null,mw:null};});
+  S.statuses=newSt;
+  S.log=[];S.anns=[];S.ts=Date.now();
+  try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){return false;}
+  if(db){ fbRoom=computeRoomKey(); fbStartListen(); }
+  const sel=document.getElementById('loginCo');
+  if(sel){
+    sel.innerHTML='<option value="">— 請選擇廠商 —</option>'+
+      S.companies.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  }
+  return true;
+}
+
+// ── 新版：?room=KEY → 從 Firebase 取資料 ────────────────────────
+(function detectRoomImport(){
+  const params=new URLSearchParams(location.search);
+  const roomKey=params.get('room');
+  if(!roomKey)return;
+  // 清除 URL 參數，避免重新整理再次觸發
+  history.replaceState(null,'',location.pathname);
+  // 等 Firebase 初始化後再讀
+  function tryFetch(retries){
+    if(!db){
+      if(retries>0) setTimeout(()=>tryFetch(retries-1),400);
+      return;
+    }
+    db.ref('ims_qr_init/'+roomKey).once('value').then(snap=>{
+      const val=snap.val();
+      if(!val||!val.payload){ console.warn('room key not found:',roomKey); return; }
+      try{
+        const payload=JSON.parse(val.payload);
+        applyPayload(payload);
+      }catch(e){ console.warn('room payload parse error',e); }
+    }).catch(e=>{ console.warn('firebase room fetch error',e); });
+  }
+  // 最多等 2 秒讓 Firebase 連上
+  setTimeout(()=>tryFetch(5), 200);
+})();
+
+// ── 舊版：#ims_init= 或 ?ims_init=（向下相容）────────────────────
 (function detectHashImport(){
-  // 支援 query string (?ims_init=) 和舊版 hash (#ims_init=) 兩種格式
   const search=location.search;
   const hash=location.hash;
-  const m=search.match(/[?&]ims_init=([A-Za-z0-9+/=_\-~.]+)/)||hash.match(/[#&]ims_init=([A-Za-z0-9+/=_\-~.]+)/);
+  const m=search.match(/[?&]ims_init=([A-Za-z0-9+/=_\-~.]+)/)||
+           hash.match(/[#&]ims_init=([A-Za-z0-9+/=_\-~.]+)/);
   if(!m)return;
   try{
-    // 優先用 LZString 解壓，失敗則 fallback 到舊版 btoa
     let json;
     try{json=LZString.decompressFromEncodedURIComponent(m[1]);}catch{}
     if(!json||json==='null'){
       try{json=decodeURIComponent(escape(atob(m[1])));}catch{}
     }
     if(!json)return;
-
     const payload=JSON.parse(json);
-    if(!Array.isArray(payload.students)||!Array.isArray(payload.companies))return;
-
-    // 靜默寫入 localStorage
-    load();
-    S.stage=payload.stage||1;
-    S.students=payload.students;
-    S.companies=payload.companies;
-    S.preSched=payload.preSched||{};
-    if(payload.cfg)S.cfg=Object.assign(S.cfg||{},payload.cfg);
-
-    // 初始化所有學生狀態
-    const newSt={};
-    payload.students.forEach(s=>{newSt[s.id]={s:'available',iw:null,mw:null};});
-    S.statuses=newSt;
-    S.log=[];S.anns=[];S.ts=Date.now();
-
-    try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){return;}
-
-    // 移除 ims_init 參數，避免重新整理再次觸發
-    const cleanUrl = location.pathname + (location.search.replace(/[?&]ims_init=[^&]*/,'').replace(/^\?$/,'') || '') + location.hash.replace(/#?&?ims_init=[^&]*/,'');
-    history.replaceState(null,'', cleanUrl || location.pathname);
-
-    // 計算 Firebase Room，開始監聽跨裝置狀態同步
-    if(db){
-      fbRoom = computeRoomKey();
-      fbStartListen();
-    }
-
-    // 填充廠商選單（讓登入畫面可直接使用）
-    const sel=document.getElementById('loginCo');
-    if(sel){
-      sel.innerHTML='<option value="">— 請選擇廠商 —</option>'+
-        S.companies.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
-    }
-  }catch(e){
-    // 解析失敗，維持正常登入流程
-  }
+    applyPayload(payload);
+    history.replaceState(null,'',location.pathname);
+  }catch(e){ /* 解析失敗，維持正常登入流程 */ }
 })();
 
 // ══════════════════════════════════════════════════
