@@ -312,6 +312,7 @@ html[data-dark="1"] .dcard.match{background:var(--success-light);border-color:va
 .dann-big{flex:0 0 150px;border-radius:10px;padding:12px 14px;position:relative;overflow:hidden;display:flex;flex-direction:column}
 .dann-match{background:#f0fff4;border:1.5px solid #9ae6b4}
 .dann-inter{background:#fffbeb;border:1.5px solid #f6e05e}
+.dann-stage2{background:#ebf8ff;border:1.5px solid #90cdf4}
 .dann-icon{font-size:20px;line-height:1;margin-bottom:3px}
 .dann-num{font-size:34px;font-weight:800;font-family:var(--mono);line-height:1}
 .dann-match .dann-num{color:#276749}.dann-inter .dann-num{color:#744210}
@@ -1102,6 +1103,18 @@ function advanceStage(){
   if(!confirm('確定進入第二階段？未媒合的同學繼續面試，已媒合者不再參與。'))return;
   S.stage=2;addLog('── 進入第二階段 ──');pushAnn('stage2',null,null);
   save();renderAll();toast('已進入第二階段','ok');
+  // 清除 Firebase 上所有未媒合學生的座位鎖，讓他們可以重新登入
+  if(db && fbRoom){
+    db.ref(fbRoom + '/sessions').once('value').then(snap=>{
+      const all = snap.val() || {};
+      Object.keys(all).forEach(sid=>{
+        const st = S.statuses[sid];
+        if(!st || st.s !== 'matched'){
+          db.ref(fbRoom + '/sessions/' + sid).remove().catch(()=>{});
+        }
+      });
+    });
+  }
 }
 function resetAll(){
   if(!confirm('確定重置所有面試記錄？此操作不可恢復。'))return;
@@ -1328,22 +1341,33 @@ function renderDispAnn(){
   }
   const latest=recent[0];
   const prev=recent.slice(1);  // 其餘全部顯示為小卡，不再二次限制
-  const bc=k=>k==='match'?'dann-match':'dann-inter';
-  const bigHtml=`<div class="dann-big ${bc(latest.kind)}">
-    <div class="dann-icon">${latest.icon}</div>
-    <div class="dann-num">${latest.num}</div>
-    <div class="dann-name">${latest.name}</div>
-    <div class="dann-co">${latest.cname}</div>
-    <div class="dann-badge">最新</div>
-  </div>`;
-  const smHtml=prev.map(x=>`<div class="dann-sm ${bc(x.kind)}">
-    <span class="dann-sm-icon">${x.icon}</span>
-    <span class="dann-sm-num">${x.num}</span>
-    <div class="dann-sm-r">
-      <div class="dann-sm-name">${x.name}</div>
-      <div class="dann-sm-co">${x.cname}</div>
-    </div>
-  </div>`).join('');
+  const bc=k=>k==='match'?'dann-match':k==='stage2'?'dann-stage2':'dann-inter';
+  const bigHtml = latest.kind === 'stage2'
+    ? `<div class="dann-big dann-stage2" style="justify-content:center;align-items:center;text-align:center">
+        <div class="dann-icon" style="font-size:48px">🚩</div>
+        <div class="dann-name" style="font-size:18px;font-weight:800;margin-top:8px;color:#744210">進入第二階段面試</div>
+        <div class="dann-badge">最新</div>
+      </div>`
+    : `<div class="dann-big ${bc(latest.kind)}">
+        <div class="dann-icon">${latest.icon}</div>
+        <div class="dann-num">${latest.num}</div>
+        <div class="dann-name">${latest.name}</div>
+        <div class="dann-co">${latest.cname}</div>
+        <div class="dann-badge">最新</div>
+      </div>`;
+  const smHtml=prev.map(x=>x.kind==='stage2'
+    ? `<div class="dann-sm dann-stage2" style="align-items:center">
+        <span class="dann-sm-icon">🚩</span>
+        <div class="dann-sm-r"><div class="dann-sm-name" style="font-weight:700">第二階段開始</div></div>
+      </div>`
+    : `<div class="dann-sm ${bc(x.kind)}">
+        <span class="dann-sm-icon">${x.icon}</span>
+        <span class="dann-sm-num">${x.num}</span>
+        <div class="dann-sm-r">
+          <div class="dann-sm-name">${x.name}</div>
+          <div class="dann-sm-co">${x.cname}</div>
+        </div>
+      </div>`).join('');
   el.innerHTML=`<div class="dann-label">最新公告</div>
     <div class="dann-wrap">
       ${bigHtml}
