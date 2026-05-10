@@ -8,7 +8,6 @@
 <script>(function(){const t=localStorage.getItem("ims_theme")||"0";document.documentElement.setAttribute("data-dark",t==="1"?"1":"0");})();</script>
 <title>媒合面試系統 — 服務台</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
-<!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <style>
@@ -314,7 +313,6 @@ html[data-dark="1"] .leg-dot{
     <button class="login-btn" id="loginBtn" onclick="tryLogin()" disabled>進入服務台</button>
     <p class="login-hint" id="loginErr" style="color:#c53030"></p>
     <p class="login-hint">服務台資料由管理端同步，請確保管理端已設定學生與廠商資料</p>
-    <div id="fbStatus" style="font-size:11px;margin-top:8px;text-align:center;color:#a0aec0">⬜ Firebase 同步：檢查中…</div>
   </div>
 </div>
 
@@ -389,111 +387,199 @@ html[data-dark="1"] .leg-dot{
 const KEY = 'ims_state_v2';
 const BC  = new BroadcastChannel('ims_bc_v2');
 
-let S = null;   // shared state
-let ME = null;  // {id, coId, coName}
-let FB_DB = null;     // Firebase Database instance
-let FB_ROOM = null;   // room key derived from data hash
-let FB_SESSION_KEY = null; // "sid_cid" key for this session
-const SESSION_STAMP = Math.random().toString(36).slice(2); // unique per browser tab
+let S  = null;   // shared state
+let ME = null;   // {id, coId, coName}
 
-// ── Firebase 設定（請替換成你自己的 Firebase 專案設定）──
-const FB_CONFIG = {
-  apiKey: "AIzaSyPlaceholderKeyReplaceMe",
-  authDomain: "your-project.firebaseapp.com",
-  databaseURL: "https://your-project-default-rtdb.firebaseio.com",
-  projectId: "your-project",
-  storageBucket: "your-project.appspot.com",
-  messagingSenderId: "000000000000",
-  appId: "1:000000000000:web:placeholder"
-};
+// ── Firebase（直接沿用 teacher.html 的專案設定）────────────────────
+const FIREBASE_CONFIG = (() => {
+  try {
+    const raw = localStorage.getItem('firebase_config_v1');
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return {
+    apiKey:            "AIzaSyBVyKP-j7_CP3SRf8h3TYhZXLQuTdx0YQ0",
+    authDomain:        "project-4198352826191193750.firebaseapp.com",
+    databaseURL:       "https://project-4198352826191193750-default-rtdb.firebaseio.com",
+    projectId:         "project-4198352826191193750",
+    storageBucket:     "project-4198352826191193750.firebasestorage.app",
+    messagingSenderId: "221540560321",
+    appId:             "1:221540560321:web:8239153fe386e089b29340"
+  };
+})();
 
-function initFirebase(){
-  try{
-    if(!firebase.apps.length) firebase.initializeApp(FB_CONFIG);
-    FB_DB = firebase.database();
+let db = null;
+let fbRoom = null;   // e.g. "ims_room_a3f1b2"
+let fbStateRef = null;
+let fbStateListener = null;
+
+// 每個瀏覽器分頁有唯一 tabId（沿用 student.html 模式）
+const navEntry = performance.getEntriesByType && performance.getEntriesByType('navigation')[0];
+const isPageReload = navEntry ? navEntry.type === 'reload' : performance.navigation?.type === 1;
+let tabId = isPageReload ? (sessionStorage.getItem('ims_tab_id') || '') : '';
+if (!tabId) {
+  tabId = Date.now() + '_' + Math.random().toString(36).slice(2, 10);
+  sessionStorage.setItem('ims_tab_id', tabId);
+}
+// deviceId：同一台設備所有分頁共用（localStorage），用於擋同裝置多開
+let deviceId = localStorage.getItem('ims_device_id') || '';
+if (!deviceId) {
+  deviceId = Date.now() + '_' + Math.random().toString(36).slice(2, 10);
+  localStorage.setItem('ims_device_id', deviceId);
+}
+
+let seatRef = null;
+let seatHeartbeat = null;
+const STALE_LOCK_TIMEOUT = 45000; // 45 秒無心跳視為過期
+
+// ─── Firebase Init ────────────────────────────────────────────────
+function initFirebase() {
+  if (!FIREBASE_CONFIG || !FIREBASE_CONFIG.databaseURL) return false;
+  try {
+    if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+    db = firebase.database();
     return true;
-  }catch(e){
+  } catch(e) {
     console.warn('Firebase init failed:', e);
     return false;
   }
 }
 
-// FB_ROOM = hash of student+company list (so each session/event has own room)
-function computeRoomId(){
-  const key = (S.students||[]).map(s=>s.id).join(',') + '|' + (S.companies||[]).map(c=>c.id).join(',');
-  let h = 0;
-  for(let i=0;i<key.length;i++){h=(h<<5)-h+key.charCodeAt(i);h|=0;}
-  return 'room_'+(h>>>0).toString(16);
+// ─── Room key：從學生+廠商列表產生穩定的 hash，確保同一場媒合用同一個 room ──
+function computeRoomKey() {
+  const raw = (S.students || []).map(s => s.id).join(',')
+            + '|' + (S.companies || []).map(c => c.id).join(',');
+  let h = 5381;
+  for (let i = 0; i < raw.length; i++) { h = ((h << 5) + h) ^ raw.charCodeAt(i); h >>>= 0; }
+  return 'ims_' + h.toString(16).padStart(8, '0');
 }
 
-// ── Firebase Realtime sync ──
-function fbPath(sub){ return FB_ROOM + '/' + sub; }
-
-function fbWrite(sub, data){
-  if(!FB_DB||!FB_ROOM) return;
-  try{ FB_DB.ref(fbPath(sub)).set(data); }catch(e){}
-}
-
-function fbListen(){
-  if(!FB_DB||!FB_ROOM) return;
-  FB_DB.ref(FB_ROOM+'/state').on('value', snap => {
+// ─── Firebase 狀態同步（唯讀監聽：由管理端或其他服務台寫入）─────────────
+function fbStartListen() {
+  if (!db || !fbRoom) return;
+  if (fbStateListener) { fbStateRef.off('value', fbStateListener); }
+  fbStateRef = db.ref(fbRoom + '/state');
+  fbStateListener = fbStateRef.on('value', snap => {
     const remote = snap.val();
-    if(!remote) return;
-    // Merge remote state into S (remote is authoritative for statuses/log/anns)
-    if(remote.ts && remote.ts > (S.ts||0)){
-      S.statuses = remote.statuses || S.statuses;
-      S.log = remote.log || S.log;
-      S.anns = remote.anns || S.anns;
-      S.stage = remote.stage || S.stage;
-      S.ts = remote.ts;
-      try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){}
-      if(ME) renderService();
-      processAnns();
-    }
+    if (!remote || !remote.ts) return;
+    if (remote.ts <= (S.ts || 0)) return;  // 不比本地新，忽略
+    // 只更新動態欄位（不覆蓋學生/廠商清單基礎設定）
+    S.statuses = remote.statuses || S.statuses;
+    S.log      = remote.log      || S.log;
+    S.anns     = remote.anns     || S.anns;
+    S.stage    = remote.stage    || S.stage;
+    S.ts       = remote.ts;
+    try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e) {}
+    if (ME) renderService();
+    processAnns();
   });
 }
 
-function fbSaveState(){
-  if(!FB_DB||!FB_ROOM) return;
-  const remote = {
-    statuses: S.statuses||{},
-    log: (S.log||[]).slice(0,60),
-    anns: (S.anns||[]).slice(-60),
-    stage: S.stage||1,
+function fbStopListen() {
+  if (fbStateRef && fbStateListener) {
+    fbStateRef.off('value', fbStateListener);
+    fbStateListener = null;
+  }
+}
+
+// ─── Firebase 寫入（save 時呼叫，跨裝置即時同步）────────────────────────
+function fbSaveState() {
+  if (!db || !fbRoom) return;
+  const payload = {
+    statuses: S.statuses || {},
+    log:  (S.log  || []).slice(0, 60),
+    anns: (S.anns || []).slice(-60),
+    stage: S.stage || 1,
     ts: Date.now()
   };
-  FB_DB.ref(FB_ROOM+'/state').set(remote);
+  db.ref(fbRoom + '/state').set(payload).catch(e => console.warn('fbSave error:', e));
 }
 
-// ── Session lock (prevent duplicate seat# on same device or cross-device) ──
-async function tryAcquireSession(sid, cid){
-  if(!FB_DB||!FB_ROOM) {
-    // fallback: sessionStorage only (same browser tab check)
-    const existing = sessionStorage.getItem('ims_lock_'+sid+'_'+cid);
-    if(existing && existing !== SESSION_STAMP) return false;
-    sessionStorage.setItem('ims_lock_'+sid+'_'+cid, SESSION_STAMP);
-    return true;
+// ─── 座位鎖定（claimSeat）── 同 student.html 的 transaction 模式 ────
+async function claimSeat(sid, cid) {
+  if (!db || !fbRoom) {
+    // 無 Firebase → 只用 sessionStorage 擋同瀏覽器多 tab
+    const sessKey = 'ims_lock_' + sid + '_' + cid;
+    if (sessionStorage.getItem(sessKey) && sessionStorage.getItem(sessKey) !== tabId)
+      return { ok: false, reason: '此瀏覽器已有相同座號+廠商的分頁正在使用' };
+    sessionStorage.setItem(sessKey, tabId);
+    return { ok: true };
   }
-  const lockRef = FB_DB.ref(FB_ROOM+'/sessions/'+sid+'_'+cid);
-  const snap = await lockRef.once('value');
-  const val = snap.val();
-  if(val && val.stamp !== SESSION_STAMP){
-    // Already occupied by another session
-    return false;
+
+  const lockRef = db.ref(fbRoom + '/sessions/' + sid + '_' + cid);
+  const now = Date.now();
+
+  const result = await lockRef.transaction(current => {
+    if (current && current.tabId !== tabId) {
+      if (current.disconnected) {
+        // 對方已主動登出或關閉 → 可接手
+      } else if (current.deviceId === deviceId) {
+        // 同裝置不同 tab → 擋住
+        return undefined;
+      } else {
+        // 不同裝置：檢查心跳是否過期
+        const age = now - (current.lastSeen || current.joinedAt || 0);
+        if (age < STALE_LOCK_TIMEOUT) return undefined; // 仍在線 → 擋住
+        // 心跳過期 → 視為已離線，可接手
+      }
+    }
+    return {
+      sid, cid, deviceId, tabId,
+      joinedAt:    current && current.tabId === tabId ? (current.joinedAt || now) : now,
+      lastSeen:    now,
+      connected:   true,
+      disconnected:false,
+      disconnectedAt: null
+    };
+  });
+
+  if (!result.committed) {
+    const snap = await lockRef.once('value');
+    const val = snap.val();
+    const who = val ? `（${val.sid}號 × ${val.cid}，另一裝置使用中）` : '';
+    return { ok: false, reason: '此座號＋廠商組合已被另一裝置登入' + who + '，請等對方關閉視窗後再試' };
   }
-  // Acquire: write with onDisconnect to auto-release when browser closes
-  await lockRef.set({ stamp: SESSION_STAMP, ts: Date.now() });
-  lockRef.onDisconnect().remove();
-  FB_SESSION_KEY = sid+'_'+cid;
-  return true;
+
+  // 確認寫入成功
+  const confirm = await lockRef.once('value');
+  if (!confirm.val() || confirm.val().tabId !== tabId)
+    return { ok: false, reason: '座位鎖定失敗，請重試' };
+
+  seatRef = lockRef;
+  // 瀏覽器關閉時自動標記 disconnected
+  lockRef.onDisconnect().update({
+    connected: false, disconnected: true,
+    disconnectedAt: firebase.database.ServerValue.TIMESTAMP,
+    lastSeen: firebase.database.ServerValue.TIMESTAMP
+  });
+  startSeatHeartbeat();
+  return { ok: true };
 }
 
-async function releaseSession(){
-  if(!FB_DB||!FB_ROOM||!FB_SESSION_KEY) return;
-  try{
-    await FB_DB.ref(FB_ROOM+'/sessions/'+FB_SESSION_KEY).remove();
-  }catch(e){}
-  FB_SESSION_KEY = null;
+async function releaseSeat(sid, cid) {
+  stopSeatHeartbeat();
+  if (!db || !fbRoom || !seatRef) return;
+  try {
+    await seatRef.onDisconnect().cancel();
+    const snap = await seatRef.once('value');
+    const val = snap.val();
+    if (val && (val.tabId === tabId || val.deviceId === deviceId)) {
+      await seatRef.remove();
+    }
+  } catch(e) {}
+  seatRef = null;
+  // 也清除 sessionStorage fallback
+  if (sid && cid) sessionStorage.removeItem('ims_lock_' + sid + '_' + cid);
+}
+
+function startSeatHeartbeat() {
+  stopSeatHeartbeat();
+  if (!seatRef) return;
+  const ping = () => seatRef && seatRef.update({ lastSeen: Date.now(), connected: true, disconnected: false, disconnectedAt: null }).catch(() => {});
+  ping();
+  seatHeartbeat = setInterval(ping, 5000);
+}
+function stopSeatHeartbeat() {
+  if (seatHeartbeat) { clearInterval(seatHeartbeat); seatHeartbeat = null; }
 }
 
 function defState(){
@@ -509,10 +595,10 @@ function load(){
   normalizeCompanies();
 }
 function save(){
-  S.ts=Date.now();
-  try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}
-  try{BC.postMessage('u');}catch{}
-  fbSaveState();
+  S.ts = Date.now();
+  try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e) {}
+  try { BC.postMessage('u'); } catch(e) {}
+  fbSaveState();   // 寫入 Firebase，讓其他裝置即時同步
 }
 
 // ══════════════════════════════════════════════════
@@ -569,52 +655,37 @@ function onCoSelect(){
   document.getElementById('loginErr').textContent='';
 }
 async function tryLogin(){
-  const rawId=document.getElementById('loginId').value.trim();
-  const cid=document.getElementById('loginCo').value;
-  if(!rawId){document.getElementById('loginErr').textContent='請輸入座號';return;}
-  if(!cid){document.getElementById('loginErr').textContent='請選擇廠商';return;}
-  const sid=rawId.padStart(2,'0');
-  const co=S.companies.find(c=>c.id===cid);
-  if(!co){document.getElementById('loginErr').textContent='廠商不存在，請確認管理端設定';return;}
+  const rawId = document.getElementById('loginId').value.trim();
+  const cid   = document.getElementById('loginCo').value;
+  const errEl = document.getElementById('loginErr');
+  const btn   = document.getElementById('loginBtn');
+  if(!rawId){ errEl.textContent='請輸入座號'; return; }
+  if(!cid)  { errEl.textContent='請選擇廠商'; return; }
+  const sid = rawId.padStart(2,'0');
+  const co  = S.companies.find(c=>c.id===cid);
+  if(!co){ errEl.textContent='廠商不存在，請確認管理端設定'; return; }
 
-  // 檢查此裝置是否已登入（sessionStorage 防重複）
-  const deviceKey='ims_sess_'+sid+'_'+cid;
-  const existingStamp=sessionStorage.getItem(deviceKey);
-  if(existingStamp && existingStamp!==SESSION_STAMP){
-    document.getElementById('loginErr').textContent='⚠️ 此瀏覽器已有相同座號+廠商的視窗開啟，請關閉後再試';
+  btn.disabled = true;
+  errEl.textContent = '🔒 驗證座位中…';
+
+  // 嘗試取得座位鎖
+  const claim = await claimSeat(sid, cid);
+  if(!claim.ok){
+    errEl.textContent = '⚠️ ' + claim.reason;
+    btn.disabled = false;
     return;
   }
 
-  // Firebase 跨裝置重複檢查
-  const btn=document.getElementById('loginBtn');
-  btn.disabled=true;
-  document.getElementById('loginErr').textContent='🔒 檢查座位中…';
-  const ok=await tryAcquireSession(sid,cid);
-  if(!ok){
-    document.getElementById('loginErr').textContent='⚠️ '+sid+'號 × '+co.name+' 目前已由另一裝置登入，關閉對方視窗後才能重新登入';
-    btn.disabled=false;
-    return;
-  }
-
-  // Mark this tab with sessionStorage so same browser can't duplicate
-  sessionStorage.setItem(deviceKey, SESSION_STAMP);
-
-  ME={id:sid,coId:cid,coName:co.name};
-  btn.disabled=false;
-  document.getElementById('loginErr').textContent='';
-
-  // Start Firebase room listener
-  if(FB_DB){ FB_ROOM=computeRoomId(); fbListen(); }
-
+  ME = { id: sid, coId: cid, coName: co.name };
+  btn.disabled = false;
+  errEl.textContent = '';
   enterService();
 }
 async function logout(){
   if(!confirm('確定登出？'))return;
-  // Release session lock
   if(ME){
-    const deviceKey='ims_sess_'+ME.id+'_'+ME.coId;
-    sessionStorage.removeItem(deviceKey);
-    await releaseSession();
+    await releaseSeat(ME.id, ME.coId);
+    fbStopListen();
   }
   ME=null;
   document.getElementById('svcScreen').style.display='none';
@@ -631,6 +702,8 @@ function enterService(){
   document.getElementById('svcWho').textContent=`${ME.id}號`;
   document.getElementById('svcCo').textContent=ME.coName;
   document.getElementById('svcStage').textContent=`第${S.stage}階段`;
+  // 若 fbRoom 尚未設定（例如未經 QR 掃描，直接用本地資料），也啟動監聽
+  if(db && !fbRoom){ fbRoom = computeRoomKey(); fbStartListen(); }
   renderService();
 }
 
@@ -948,8 +1021,11 @@ function toggleTheme(){
     // 移除 hash，避免重新整理再次觸發
     history.replaceState(null,'',location.pathname+location.search);
 
-    // 設定 Firebase Room（基於資料 hash）
-    if(FB_DB){ FB_ROOM=computeRoomId(); }
+    // 計算 Firebase Room，開始監聽跨裝置狀態同步
+    if(db){
+      fbRoom = computeRoomKey();
+      fbStartListen();
+    }
 
     // 填充廠商選單（讓登入畫面可直接使用）
     const sel=document.getElementById('loginCo');
@@ -966,35 +1042,14 @@ function toggleTheme(){
 //  INIT
 // ══════════════════════════════════════════════════
 load();
-// Firebase init (after load so we have room data)
-try{ initFirebase(); }catch(e){ console.warn('Firebase unavailable, using localStorage only'); }
+initFirebase();   // 連接 Firebase（沿用 teacher.html 的專案）
 
-// Release session on page close
-window.addEventListener('beforeunload', ()=>{
-  if(ME){
-    const deviceKey='ims_sess_'+ME.id+'_'+ME.coId;
-    sessionStorage.removeItem(deviceKey);
-    // Firebase onDisconnect handles the Firebase-side cleanup
-  }
+// 頁面關閉時自動釋放座位（Firebase onDisconnect 也會處理，這是雙保險）
+window.addEventListener('beforeunload', () => {
+  if(ME) releaseSeat(ME.id, ME.coId);
 });
 
-(function(){
-  const t=document.documentElement.getAttribute('data-dark');
-  const b=document.getElementById('themeBtn');
-  if(b)b.textContent=t==='1'?'☀':'🌙';
-  // Update Firebase status indicator
-  const fbEl=document.getElementById('fbStatus');
-  if(fbEl){
-    const configured = FB_CONFIG.databaseURL && !FB_CONFIG.databaseURL.includes('your-project');
-    if(!configured){
-      fbEl.textContent='⚠️ Firebase 未設定，使用 localStorage（僅限同裝置同步）';
-      fbEl.style.color='#d69e2e';
-    } else {
-      fbEl.textContent='🟢 Firebase 已設定，支援跨裝置即時同步';
-      fbEl.style.color='#38a169';
-    }
-  }
-})();
+(function(){const t=document.documentElement.getAttribute('data-dark');const b=document.getElementById('themeBtn');if(b)b.textContent=t==='1'?'☀':'🌙';})();
 // Pre-populate company list if data already exists
 if(S.companies.length){
   const sel=document.getElementById('loginCo');
