@@ -987,8 +987,10 @@ function toggleTheme(){
 //  HASH DATA IMPORT（QR Code 掃描 → 靜默載入）
 // ══════════════════════════════════════════════════
 (function detectHashImport(){
+  // 支援 query string (?ims_init=) 和舊版 hash (#ims_init=) 兩種格式
+  const search=location.search;
   const hash=location.hash;
-  const m=hash.match(/[#&]ims_init=([A-Za-z0-9+/=_\-~.]+)/);
+  const m=search.match(/[?&]ims_init=([A-Za-z0-9+/=_\-~.]+)/)||hash.match(/[#&]ims_init=([A-Za-z0-9+/=_\-~.]+)/);
   if(!m)return;
   try{
     // 優先用 LZString 解壓，失敗則 fallback 到舊版 btoa
@@ -1018,8 +1020,9 @@ function toggleTheme(){
 
     try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){return;}
 
-    // 移除 hash，避免重新整理再次觸發
-    history.replaceState(null,'',location.pathname+location.search);
+    // 移除 ims_init 參數，避免重新整理再次觸發
+    const cleanUrl = location.pathname + (location.search.replace(/[?&]ims_init=[^&]*/,'').replace(/^\?$/,'') || '') + location.hash.replace(/#?&?ims_init=[^&]*/,'');
+    history.replaceState(null,'', cleanUrl || location.pathname);
 
     // 計算 Firebase Room，開始監聽跨裝置狀態同步
     if(db){
