@@ -703,7 +703,10 @@ function enterService(){
   document.getElementById('svcCo').textContent=ME.coName;
   document.getElementById('svcStage').textContent=`第${S.stage}階段`;
   // 若 fbRoom 尚未設定（例如未經 QR 掃描，直接用本地資料），也啟動監聽
-  if(db && !fbRoom){ fbRoom = computeRoomKey(); fbStartListen(); }
+  if(db){
+    if(!fbRoom) fbRoom = computeRoomKey();
+    fbStartListen();
+  }
   renderService();
 }
 
@@ -1012,7 +1015,6 @@ function applyPayload(payload){
   S.log=[];S.anns=[];S.ts=Date.now();
   try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){return false;}
   if(db){ fbRoom=computeRoomKey(); fbStartListen(); }
-  const sel=document.getElementById('loginCo');
   if(sel){
     sel.innerHTML='<option value="">— 請選擇廠商 —</option>'+
       S.companies.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
