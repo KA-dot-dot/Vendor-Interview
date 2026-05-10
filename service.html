@@ -491,24 +491,33 @@ let seatRef = null;
 let seatHeartbeatTimer = null;
 
 async function claimSeat(sid) {
+  const now = Date.now();
+  const localKey = 'ims_active_lock';
+
+  // ── 步驟1：localStorage 擋同裝置同瀏覽器多 tab ──
+  const existing = (() => { try { const v = localStorage.getItem(localKey); return v ? JSON.parse(v) : null; } catch { return null; } })();
+  if (existing && existing.sid !== sid && existing.tabId !== tabId) {
+    const age = now - (existing.lastSeen || 0);
+    if (age < 10000) {
+      return { ok: false, reason: `此裝置已由 ${existing.sid} 號登入，請先登出再切換` };
+    }
+  }
+
   if (!db || !fbRoom) {
-    const sessKey = 'ims_lock_' + sid;
-    if (sessionStorage.getItem(sessKey) && sessionStorage.getItem(sessKey) !== tabId)
-      return { ok: false, reason: '此座號已有分頁正在使用' };
-    sessionStorage.setItem(sessKey, tabId);
+    localStorage.setItem(localKey, JSON.stringify({ sid, tabId, lastSeen: now }));
     return { ok: true };
   }
+
+  // ── 步驟2：Firebase transaction 擋跨裝置同座號 ──
   const lockRef = db.ref(fbRoom + '/sessions/' + sid);
-  const now = Date.now();
+
   const result = await lockRef.transaction(current => {
     if (current && current.tabId !== tabId) {
       if (current.disconnected) {
         // 對方已登出 → 可接手
-      } else if (current.deviceId === deviceId) {
-        return undefined; // 同裝置不同 tab → 擋
       } else {
         const age = now - (current.lastSeen || current.joinedAt || 0);
-        if (age < STALE_LOCK_TIMEOUT) return undefined; // 仍在線 → 擋
+        if (age < STALE_LOCK_TIMEOUT) return undefined; // 仍在線 → 擋住
       }
     }
     return {
@@ -517,16 +526,20 @@ async function claimSeat(sid) {
       lastSeen: now, connected: true, disconnected: false, disconnectedAt: null
     };
   });
+
   if (!result.committed) {
     const snap = await lockRef.once('value');
     const val = snap.val();
     const who = val ? `（${val.sid}號 已在另一裝置登入）` : '';
-    return { ok: false, reason: '此座號已被另一裝置登入' + who + '，請等對方關閉視窗後再試' };
+    return { ok: false, reason: '此座號已被另一裝置登入' + who + '，請等對方關閉後再試' };
   }
+
   const check = await lockRef.once('value');
   if (!check.val() || check.val().tabId !== tabId)
     return { ok: false, reason: '座位鎖定失敗，請重試' };
+
   seatRef = lockRef;
+  localStorage.setItem(localKey, JSON.stringify({ sid, tabId, lastSeen: now }));
   lockRef.onDisconnect().update({
     connected: false, disconnected: true,
     disconnectedAt: firebase.database.ServerValue.TIMESTAMP,
@@ -538,6 +551,10 @@ async function claimSeat(sid) {
 
 async function releaseSeat(sid) {
   stopSeatHeartbeat();
+  try {
+    const v = localStorage.getItem('ims_active_lock');
+    if (v) { const p = JSON.parse(v); if (p.tabId === tabId) localStorage.removeItem('ims_active_lock'); }
+  } catch(e) {}
   if (!db || !fbRoom || !seatRef) return;
   try {
     await seatRef.onDisconnect().cancel();
@@ -546,14 +563,18 @@ async function releaseSeat(sid) {
     if (val && (val.tabId === tabId || val.deviceId === deviceId)) await seatRef.remove();
   } catch(e) {}
   seatRef = null;
-  if (sid) sessionStorage.removeItem('ims_lock_' + sid);
 }
 
 function startSeatHeartbeat() {
   stopSeatHeartbeat();
-  seatHeartbeatTimer = setInterval(() => {
+  const ping = () => {
     if (seatRef) seatRef.update({ lastSeen: Date.now(), connected: true }).catch(() => {});
-  }, 8000);
+    if (ME) {
+      try { localStorage.setItem('ims_active_lock', JSON.stringify({ sid: ME.id, tabId, lastSeen: Date.now() })); } catch(e) {}
+    }
+  };
+  ping();
+  seatHeartbeatTimer = setInterval(ping, 5000);
 }
 function stopSeatHeartbeat() {
   if (seatHeartbeatTimer) { clearInterval(seatHeartbeatTimer); seatHeartbeatTimer = null; }
