@@ -441,6 +441,21 @@ html[data-dark="1"] code,
 html[data-dark="1"] #loginPreview{
   color:#111827!important;
 }
+
+/* ── Share Modal ── */
+#shareModal{display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.55);align-items:center;justify-content:center}
+#shareModal.open{display:flex}
+.share-modal-box{background:#fff;border-radius:16px;padding:28px 28px 22px;width:min(560px,96vw);max-height:90vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,.3);animation:mopen .22s ease}
+@keyframes mopen{from{transform:scale(.92);opacity:0}to{transform:scale(1);opacity:1}}
+html[data-dark="1"] .share-modal-box{background:#1e293b;color:#f1f5f9}
+.share-modal-title{font-size:17px;font-weight:800;color:#1a365d;margin-bottom:4px}
+html[data-dark="1"] .share-modal-title{color:#93c5fd}
+.share-modal-close{float:right;background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);line-height:1;padding:0 4px}
+.share-modal-close:hover{color:var(--text)}
+.share-qr-wrap{text-align:center;margin:14px 0 10px}
+.share-url-box{background:var(--bg);border:2px solid var(--primary-border);border-radius:8px;padding:9px 13px;font-size:11px;font-family:var(--mono);word-break:break-all;cursor:pointer;color:var(--primary);line-height:1.6;margin-top:10px}
+.share-url-box:hover{background:var(--primary-light)}
+.share-status{font-size:12px;color:var(--muted);margin-top:6px;min-height:18px}
 </style>
 </head>
 <body>
@@ -457,6 +472,7 @@ html[data-dark="1"] #loginPreview{
       <button class="nav-btn" data-tab="disp" onclick="goTab('disp')">📺 投影顯示</button>
     </nav>
     <button class="nav-btn" id="themeBtn" onclick="toggleTheme()" title="深色/淺色切換" style="margin-left:6px;font-size:16px;padding:6px 10px">🌙</button>
+    <button class="nav-btn" onclick="openShareModal()" title="分享連結 / QR Code" style="margin-left:2px;background:rgba(255,255,255,.18);font-weight:700">📲 分享</button>
   </div>
 
 <!-- ── 跑馬燈播報列 ── -->
@@ -467,40 +483,6 @@ html[data-dark="1"] #loginPreview{
   </div>
 </div>
 
-<!-- ════════════ 手機分享連結區 ════════════ -->
-<div id="shareWrap" style="max-width:1400px;margin:0 auto;padding:16px 20px 0">
-  <div style="background:linear-gradient(135deg,#ebf8ff 0%,#e6fffa 100%);border:2px solid var(--primary-border);border-radius:var(--radius-lg);padding:14px 18px">
-    <!-- 標題列：一直顯示 -->
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-      <div>
-        <span style="font-size:14px;font-weight:700;color:#1a365d">📲 手機分享連結</span>
-        <span style="font-size:12px;color:var(--muted);margin-left:10px">將學生、廠商、預排名單打包成 QR Code，手機掃描即用</span>
-      </div>
-      <button class="btn btn-primary btn-sm" onclick="genShareLink()" style="white-space:nowrap">🔗 產生 QR Code 與連結</button>
-    </div>
-    <!-- 結果區：按鈕後才顯示 -->
-    <div id="shareResult" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--primary-border)">
-      <div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
-        <!-- QR Code canvas -->
-        <div style="flex-shrink:0;text-align:center">
-          <canvas id="qrCanvas" style="display:block;border-radius:8px;border:1px solid var(--border)"></canvas>
-          <div style="font-size:11px;color:var(--muted);margin-top:5px">手機掃一掃</div>
-        </div>
-        <!-- URL + 資訊 -->
-        <div style="flex:1;min-width:220px">
-          <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:5px">📋 分享連結（點擊複製）</div>
-          <div id="shareUrlBox" onclick="copyShareUrl()" title="點擊複製"
-            style="background:#fff;border:2px solid var(--primary-border);border-radius:8px;padding:9px 13px;font-size:11px;font-family:var(--mono);word-break:break-all;cursor:pointer;color:var(--primary);line-height:1.6;max-height:90px;overflow-y:auto"
-            onmouseenter="this.style.background='var(--primary-light)'"
-            onmouseleave="this.style.background='#fff'"></div>
-          <div id="copyMsg" style="font-size:12px;color:#38a169;margin-top:5px;display:none;font-weight:600">✓ 已複製到剪貼簿！</div>
-          <div style="font-size:12px;margin-top:8px" id="shareInfo"></div>
-          <div style="font-size:11px;color:#e53e3e;margin-top:5px;font-weight:600">⚠️ 修改設定後請重新產生</div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
 
 <!-- ────────── 學生廠商 ────────── -->
 <div class="panel on wrap" id="panel-import">
@@ -744,6 +726,31 @@ html[data-dark="1"] #loginPreview{
       <div class="disp-ann-area" id="dispAnn"></div>
       <div class="disp-grid" id="dispGrid"></div>
     </div>
+  </div>
+</div>
+
+
+<!-- ════════════ 分享 Modal ════════════ -->
+<div id="shareModal" onclick="if(event.target===this)closeShareModal()">
+  <div class="share-modal-box">
+    <button class="share-modal-close" onclick="closeShareModal()">✕</button>
+    <div class="share-modal-title">📲 手機分享 QR Code</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">學生掃描即可直接進入服務台</div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap">
+      <div class="share-qr-wrap" style="flex-shrink:0">
+        <div id="shareQrImg" style="width:180px;height:180px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:8px;background:#f8fafc;font-size:13px;color:var(--muted)">按下方按鈕產生</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:5px">手機掃一掃</div>
+      </div>
+      <div style="flex:1;min-width:200px">
+        <button class="btn btn-primary" style="width:100%;margin-bottom:10px" onclick="genShareLink()">🔗 產生短網址 &amp; QR Code</button>
+        <div id="shareUrlBox" class="share-url-box" onclick="copyShareUrl()" title="點擊複製" style="display:none">—</div>
+        <div id="shareStatus" class="share-status"></div>
+        <div id="copyMsg" style="font-size:12px;color:#38a169;margin-top:4px;display:none;font-weight:600">✓ 已複製！</div>
+        <div id="shareInfo" style="font-size:12px;color:var(--muted);margin-top:6px"></div>
+        <div style="font-size:11px;color:#e53e3e;margin-top:6px;font-weight:600">⚠️ 修改設定後請重新產生</div>
+      </div>
+    </div>
+    <canvas id="qrCanvas" style="display:none"></canvas>
   </div>
 </div>
 
@@ -1461,12 +1468,21 @@ function toggleTheme(){
 // ══════════════════════════════════════════════════
 //  SHARE LINK (QR Code + LZString 壓縮)
 // ══════════════════════════════════════════════════
-function genShareLink(){
+/* ── Modal helpers ── */
+function openShareModal(){
+  document.getElementById('shareModal').classList.add('open');
+}
+function closeShareModal(){
+  document.getElementById('shareModal').classList.remove('open');
+}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeShareModal();});
+
+/* ── Share Link: short URL + QR ── */
+async function genShareLink(){
   load();
   if(!S.students.length){toast('請先匯入學生名單','err');return;}
   if(!S.companies.length){toast('請先匯入廠商名單','err');return;}
 
-  // 只打包初始設定資料（不含面試狀態、記錄）
   const payload={
     stage:S.stage||1,
     students:S.students,
@@ -1479,61 +1495,77 @@ function genShareLink(){
       vUri:(S.cfg&&S.cfg.vUri)||''
     }
   };
-
   let encoded;
-  try{
-    // LZString 壓縮 → URL-safe，大幅縮短 URL 長度
-    encoded=LZString.compressToEncodedURIComponent(JSON.stringify(payload));
-  }catch(e){toast('壓縮失敗，請重試','err');return;}
+  try{encoded=LZString.compressToEncodedURIComponent(JSON.stringify(payload));}
+  catch(e){toast('壓縮失敗','err');return;}
 
   const base=location.origin+location.pathname.replace(/[^/]*$/,'');
-  const url=base+'#ims_init='+encoded;
+  const longUrl=base+'service.html#ims_init='+encoded;
 
-  document.getElementById('shareResult').style.display='block';
-  document.getElementById('shareUrlBox').textContent=url;
+  const statusEl=document.getElementById('shareStatus');
+  const qrWrap=document.getElementById('shareQrImg');
+  const urlBox=document.getElementById('shareUrlBox');
+  const infoEl=document.getElementById('shareInfo');
+
+  statusEl.textContent='⏳ 正在縮短網址…';
+  urlBox.style.display='none';
+  qrWrap.innerHTML='<span style="font-size:13px;color:var(--muted)">產生中…</span>';
+
+  let shortUrl=null;
+  try{
+    const resp=await fetch('https://api.shrtco.de/v2/shorten?url='+encodeURIComponent(longUrl));
+    const data=await resp.json();
+    if(data.ok){
+      shortUrl=data.result.full_short_link;
+    }
+  }catch(err){
+    console.warn('shrtco.de failed:',err);
+  }
+
+  // Fallback: try tinyurl
+  if(!shortUrl){
+    try{
+      const resp2=await fetch('https://tinyurl.com/api-create.php?url='+encodeURIComponent(longUrl));
+      if(resp2.ok){
+        const txt=await resp2.text();
+        if(txt.startsWith('http'))shortUrl=txt.trim();
+      }
+    }catch(err2){console.warn('tinyurl failed:',err2);}
+  }
+
+  const finalUrl=shortUrl||longUrl;
+  statusEl.textContent=shortUrl?'✅ 短網址產生成功！':'⚠️ 短網址服務無法使用，使用原始連結（QR Code 可能較密）';
+
+  // qrserver.com produces QR as img, no CORS issue
+  const qrSize=200;
+  const qrSrc='https://api.qrserver.com/v1/create-qr-code/?size='+qrSize+'x'+qrSize+'&data='+encodeURIComponent(finalUrl)+'&ecc=L&margin=2';
+  qrWrap.innerHTML=`<img src="${qrSrc}" width="${qrSize}" height="${qrSize}" style="border-radius:6px;display:block" alt="QR Code" onerror="this.parentNode.textContent='QR Code 載入失敗，請複製連結'">`;
+
+  urlBox.textContent=finalUrl;
+  urlBox.style.display='block';
 
   const psKeys=Object.keys(payload.preSched||{});
-  const psInfo=psKeys.length
-    ?`${psKeys.length} 間廠商已設定預排名單`
-    :'⚠️ 尚未設定預排名單';
-  document.getElementById('shareInfo').innerHTML=
-    `📦 <strong>${payload.students.length}</strong> 位學生 ／ `+
-    `<strong>${payload.companies.length}</strong> 間廠商 ／ ${psInfo}`;
+  const psInfo=psKeys.length?`${psKeys.length} 間廠商已設定預排名單`:'⚠️ 尚未設定預排名單';
+  infoEl.innerHTML=`📦 <strong>${payload.students.length}</strong> 位學生 ／ <strong>${payload.companies.length}</strong> 間廠商 ／ ${psInfo}`;
 
-  // 用 QRious（canvas 版）產生 QR Code
-  const canvas=document.getElementById('qrCanvas');
-  try{
-    // 依 URL 長度自動選最低誤差修正等級，確保能塞入
-    const level=url.length>1200?'L':url.length>800?'M':'H';
-    const size=url.length>1200?220:200;
-    new QRious({
-      element:canvas,
-      value:url,
-      size:size,
-      level:level,
-      background:'#ffffff',
-      foreground:'#1a365d'
-    });
-    canvas.style.display='block';
-  }catch(e){
-    canvas.style.display='none';
-    toast('QR Code 產生失敗，請複製連結手動傳送','warn');
-  }
   toast('分享連結已產生 ✓','ok');
 }
 
 function copyShareUrl(){
-  const url=document.getElementById('shareUrlBox').textContent;
-  if(!url)return;
+  const url=(document.getElementById('shareUrlBox').textContent||'').trim();
+  if(!url||url==='—')return;
   const showCopied=()=>{
     const msg=document.getElementById('copyMsg');
     msg.style.display='block';
     setTimeout(()=>{msg.style.display='none';},2500);
   };
-  if(navigator.clipboard&&navigator.clipboard.writeText){
+  if(navigator.clipboard&&navigator.clipboard.writeText)
     navigator.clipboard.writeText(url).then(showCopied).catch(()=>fallbackCopy(url,showCopied));
-  }else{fallbackCopy(url,showCopied);}
+  else fallbackCopy(url,showCopied);
 }
+
+
+
 function fallbackCopy(text,cb){
   const el=document.createElement('textarea');
   el.value=text;el.style.cssText='position:fixed;opacity:0;top:0;left:0';
@@ -1541,7 +1573,6 @@ function fallbackCopy(text,cb){
   try{document.execCommand('copy');cb();}catch{}
   document.body.removeChild(el);
 }
-
 
 renderAll();
 loadVoiceUI();
