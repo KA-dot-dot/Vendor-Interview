@@ -1511,7 +1511,7 @@ async function genShareLink(){
   catch(e){ toast('壓縮失敗','err'); return; }
 
   const base    = location.origin + location.pathname.replace(/[^/]*$/, '');
-  const longUrl = base + 'index.html#ims_init=' + encoded;
+  const longUrl = base + 'index.html?ims_init=' + encoded;
 
   const statusEl = document.getElementById('shareStatus');
   const qrWrap   = document.getElementById('smodQrWrap');
