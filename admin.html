@@ -1105,14 +1105,19 @@ function advanceStage(){
   if(!confirm('確定進入第二階段？未媒合的同學繼續面試，已媒合者不再參與。'))return;
   S.stage=2;addLog('── 進入第二階段 ──');pushAnn('stage2',null,null);
   save();renderAll();toast('已進入第二階段','ok');
-  // 清除 Firebase 上所有未媒合學生的座位鎖，讓他們可以重新登入
+  // 第二階段：清除所有未媒合學生的座位鎖（標記 disconnected，讓他們可以立即重新登入）
   if(db && fbRoom){
     db.ref(fbRoom + '/sessions').once('value').then(snap=>{
       const all = snap.val() || {};
       Object.keys(all).forEach(sid=>{
         const st = S.statuses[sid];
         if(!st || st.s !== 'matched'){
-          db.ref(fbRoom + '/sessions/' + sid).remove().catch(()=>{});
+          // 標記為 disconnected，讓學生端可以立即接手（不需等 45 秒）
+          db.ref(fbRoom + '/sessions/' + sid).update({
+            connected: false,
+            disconnected: true,
+            disconnectedAt: Date.now()
+          }).catch(()=>{});
         }
       });
     });
