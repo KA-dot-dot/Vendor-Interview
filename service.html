@@ -506,7 +506,9 @@ let seatRef = null;
 let seatHeartbeatTimer = null;
 
 async function claimSeat(sid) {
-  if (!db || !fbRoom) return { ok: true };
+  if (!db) return { ok: true };
+  if (!fbRoom && S.students.length) fbRoom = computeRoomKey();
+  if (!fbRoom) return { ok: true };
 
   const lockRef = db.ref(fbRoom + '/sessions/' + sid);
   const now = Date.now();
