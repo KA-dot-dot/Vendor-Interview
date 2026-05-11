@@ -800,6 +800,7 @@ function fbStartListen() {
     S.anns     = remote.anns     || S.anns;
     S.stage    = remote.stage    || S.stage;
     S.ts       = remote.ts;
+    lastTs     = remote.ts;  // 同步 lastTs，避免 setInterval 用舊資料覆蓋
     try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e) {}
     renderAll(); processAnns();
   }, err => {
@@ -1553,11 +1554,13 @@ BC.onmessage=()=>{
 };
 let lastTs=0;
 setInterval(()=>{
+  // 有 Firebase listener 時不用 localStorage poll（避免舊資料覆蓋）
+  if(db && fbRoom) return;
   try{
     const raw=localStorage.getItem(KEY);
     if(!raw)return;
     const p=JSON.parse(raw);
-    if(p.ts>lastTs){lastTs=p.ts;S=p;renderAll();processAnns();}
+    if(p.ts>lastTs && p.ts>(S.ts||0)){lastTs=p.ts;S=p;renderAll();processAnns();}
   }catch{}
 },2000);
 
