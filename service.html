@@ -513,37 +513,37 @@ async function claimSeat(sid) {
   const lockRef = db.ref(fbRoom + '/sessions/' + sid);
   const now = Date.now();
 
-  // （同裝置可登不同座號，只擋同座號跨裝置）
-
   const result = await lockRef.transaction(current => {
-    if (current && current.tabId !== tabId) {
-      const lastSeen = Number(current.lastSeen || current.joinedAt || 0);
-      // 不同裝置且心跳還活著 → 擋住（同裝置可開多個分頁登不同座號）
-      if (current.deviceId !== deviceId) {
-        if (lastSeen && now - lastSeen < STALE_LOCK_TIMEOUT) return undefined;
-      }
+    if (current === null) {
+      return { sid, deviceId, tabId, joinedAt: now, lastSeen: now, connected: true, disconnected: false };
     }
-    return {
-      sid, deviceId, tabId,
-      joinedAt: current && current.tabId === tabId ? (current.joinedAt || now) : now,
-      lastSeen: now,
-      connected: true
-    };
+    if (current.tabId === tabId) {
+      return Object.assign({}, current, { lastSeen: now, connected: true, disconnected: false });
+    }
+    if (current.disconnected === true) {
+      return Object.assign({}, current, { deviceId, tabId, lastSeen: now, connected: true, disconnected: false, disconnectedAt: null });
+    }
+    if (current.deviceId === deviceId) {
+      return undefined;
+    }
+    const lastSeen = Number(current.lastSeen || current.joinedAt || 0);
+    if (lastSeen && now - lastSeen >= STALE_LOCK_TIMEOUT) {
+      return Object.assign({}, current, { deviceId, tabId, lastSeen: now, connected: true, disconnected: false, disconnectedAt: null });
+    }
+    return undefined;
   });
 
   if (!result.committed) {
     const snap = await lockRef.once('value');
     const val = snap.val();
-    const who = val ? `（${val.sid}號 已在另一裝置登入）` : '';
-    return { ok: false, reason: '此座號已被另一裝置登入' + who + '，請等對方關閉後再試' };
+    if (val && val.deviceId === deviceId) {
+      return { ok: false, reason: '此座號已在同一裝置的其他分頁開啟，請關閉重複的分頁' };
+    }
+    return { ok: false, reason: '此座號已被另一裝置登入，請等對方關閉後再試' };
   }
 
-  const check = await lockRef.once('value');
-  if (!check.val() || check.val().tabId !== tabId)
-    return { ok: false, reason: '座位鎖定失敗，請重試' };
-
   seatRef = lockRef;
-  lockRef.onDisconnect().remove();
+  lockRef.onDisconnect().update({ connected: false, disconnected: true, disconnectedAt: firebase.database.ServerValue.TIMESTAMP });
   startSeatHeartbeat();
   return { ok: true };
 }
@@ -555,7 +555,10 @@ async function releaseSeat(sid) {
     await seatRef.onDisconnect().cancel();
     const snap = await seatRef.once('value');
     const val = snap.val();
-    if (val && (val.tabId === tabId || val.deviceId === deviceId)) await seatRef.remove();
+    if (val && (val.tabId === tabId || val.deviceId === deviceId)) {
+      // 標記 disconnected，讓下一個裝置可以立即接手（不需等 45 秒）
+      await seatRef.update({ connected: false, disconnected: true, disconnectedAt: Date.now() });
+    }
   } catch(e) {}
   seatRef = null;
 }
