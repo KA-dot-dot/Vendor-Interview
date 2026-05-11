@@ -1142,7 +1142,7 @@ function pushAnn(type,sid,cid){
 function processAnns(){
   const pending=S.anns.filter(a=>!a.done&&a.id!==LAST_ANN);
   if(!pending.length)return;
-  pending.forEach(a=>{\
+  pending.forEach(a=>{
     const c=annContent(a);
     if(c){
       pushMQ(`${c.icon} ${c.title}`);
