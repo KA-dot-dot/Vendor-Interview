@@ -532,34 +532,13 @@ async function claimSeat(sid, cid) {
   const lockRef = db.ref(fbRoom + '/sessions/' + sid);
   const now = Date.now();
 
-  // ── 先檢查此裝置是否已有其他座號登入 ──
-  // 掃描所有 sessions，若發現同 deviceId 但不同 sid → 擋住；過期的直接刪除
-  try {
-    const allSnap = await db.ref(fbRoom + '/sessions').once('value');
-    const all = allSnap.val() || {};
-    for (const [existSid, val] of Object.entries(all)) {
-      if (existSid === sid) continue;
-      if (!val || !val.deviceId) continue;
-      if (val.deviceId !== deviceId) continue;
-      const age = now - Number(val.lastSeen || val.joinedAt || 0);
-      if (age < STALE_LOCK_TIMEOUT) {
-        // 心跳還活著 → 擋住
-        return { ok: false, reason: `此裝置已由 ${existSid} 號登入，請先登出再切換` };
-      } else {
-        // 心跳過期 → 舊殘留資料，直接清除
-        db.ref(fbRoom + '/sessions/' + existSid).remove().catch(() => {});
-      }
-    }
-  } catch(e) {}
+  // （同裝置可登不同座號，只擋同座號跨裝置）
 
   const result = await lockRef.transaction(current => {
     if (current && current.tabId !== tabId) {
       const lastSeen = Number(current.lastSeen || current.joinedAt || 0);
-      if (current.deviceId === deviceId) {
-        // 同裝置不同 tab → 直接擋住
-        return undefined;
-      } else {
-        // 不同裝置：心跳超過 STALE_LOCK_TIMEOUT 視為離線可接手
+      // 不同裝置且心跳還活著 → 擋住（同裝置可開多個分頁登不同座號）
+      if (current.deviceId !== deviceId) {
         if (lastSeen && now - lastSeen < STALE_LOCK_TIMEOUT) return undefined;
       }
     }
@@ -574,9 +553,6 @@ async function claimSeat(sid, cid) {
   if (!result.committed) {
     const snap = await lockRef.once('value');
     const val = snap.val();
-    if (val && val.deviceId === deviceId) {
-      return { ok: false, reason: '此裝置已有其他分頁登入，請關閉其他分頁後再試' };
-    }
     const who = val ? `（${val.sid}號 已在另一裝置登入）` : '';
     return { ok: false, reason: '此座號已被另一裝置登入' + who + '，請等對方關閉後再試' };
   }
