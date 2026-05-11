@@ -1121,6 +1121,10 @@ function resetAll(){
   S.statuses={};S.log=[];S.anns=[];S.stage=1;
   ANN_LIST.length=0;MQ_LIST.length=0;LAST_ANN='';sessionStorage.removeItem('ims_last_ann');stopVoice();
   save();renderAll();renderMQ();toast('系統已重置','ok');
+  // 清除 Firebase sessions，讓所有座號可以重新登入
+  if(db && fbRoom){
+    db.ref(fbRoom + '/sessions').remove().catch(()=>{});
+  }
 }
 
 function pushAnn(type,sid,cid){
