@@ -514,13 +514,11 @@ async function claimSeat(sid) {
   const result = await lockRef.transaction(current => {
     if (current && current.tabId !== tabId) {
       const lastSeen = Number(current.lastSeen || current.joinedAt || 0);
-      if (current.disconnected) {
-        // 對方已主動登出/關閉 → 可接手
-      } else if (current.deviceId === deviceId) {
+      if (current.deviceId === deviceId) {
         // 同裝置不同 tab → 直接擋住
         return undefined;
       } else {
-        // 不同裝置，檢查心跳是否過期（45秒）
+        // 不同裝置：心跳超過 STALE_LOCK_TIMEOUT 視為離線可接手
         if (lastSeen && now - lastSeen < STALE_LOCK_TIMEOUT) return undefined;
       }
     }
@@ -528,9 +526,7 @@ async function claimSeat(sid) {
       sid, deviceId, tabId,
       joinedAt: current && current.tabId === tabId ? (current.joinedAt || now) : now,
       lastSeen: now,
-      connected: true,
-      disconnected: false,
-      disconnectedAt: null
+      connected: true
     };
   });
 
@@ -549,11 +545,8 @@ async function claimSeat(sid) {
     return { ok: false, reason: '座位鎖定失敗，請重試' };
 
   seatRef = lockRef;
-  lockRef.onDisconnect().update({
-    connected: false, disconnected: true,
-    disconnectedAt: firebase.database.ServerValue.TIMESTAMP,
-    lastSeen: firebase.database.ServerValue.TIMESTAMP
-  });
+  // 關閉頁面時直接刪除節點，讓其他裝置可以立即接手
+  lockRef.onDisconnect().remove();
   startSeatHeartbeat();
   return { ok: true };
 }
@@ -573,7 +566,7 @@ async function releaseSeat(sid) {
 function startSeatHeartbeat() {
   stopSeatHeartbeat();
   const ping = () => {
-    if (seatRef) seatRef.update({ lastSeen: Date.now(), connected: true, disconnected: false, disconnectedAt: null }).catch(() => {});
+    if (seatRef) seatRef.update({ lastSeen: Date.now(), connected: true }).catch(() => {});
   };
   ping();
   seatHeartbeatTimer = setInterval(ping, 5000);
