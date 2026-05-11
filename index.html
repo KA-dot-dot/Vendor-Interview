@@ -467,12 +467,24 @@ function fbStartListen() {
     if (!remote || !remote.ts) return;
     if (remote.ts <= (S.ts || 0)) return;  // 不比本地新，忽略
     const prevStage = S.stage || 1;
-    // 只更新動態欄位（不覆蓋學生/廠商清單基礎設定）
-    S.statuses = remote.statuses || S.statuses;
-    S.log      = remote.log      || S.log;
-    S.anns     = remote.anns     || S.anns;
-    S.stage    = remote.stage    || S.stage;
-    S.ts       = remote.ts;
+    // statuses 做合併：遠端有、本地沒有的才更新
+    // 避免遠端舊資料覆蓋本地剛寫入的操作
+    if (remote.statuses && Object.keys(remote.statuses).length > 0) {
+      const merged = Object.assign({}, remote.statuses);
+      // 若本地的 ts 比 remote.ts 更近（本地剛有操作），保留本地狀態
+      const localAge = Date.now() - (S.ts || 0);
+      if (localAge < 3000) {
+        // 3秒內本地有操作，以本地為主，只補充遠端有但本地沒有的
+        Object.keys(S.statuses || {}).forEach(sid => {
+          merged[sid] = S.statuses[sid];
+        });
+      }
+      S.statuses = merged;
+    }
+    S.log   = remote.log   || S.log;
+    S.anns  = remote.anns  || S.anns;
+    S.stage = remote.stage || S.stage;
+    S.ts    = remote.ts;
     try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e) {}
     if (ME) renderService();
     processAnns();
