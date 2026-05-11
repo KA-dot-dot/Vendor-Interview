@@ -511,6 +511,25 @@ async function claimSeat(sid) {
   const lockRef = db.ref(fbRoom + '/sessions/' + sid);
   const now = Date.now();
 
+  // ── 先檢查此裝置是否已有其他座號登入 ──
+  try {
+    const allSnap = await db.ref(fbRoom + '/sessions').once('value');
+    const all = allSnap.val() || {};
+    for (const [existSid, val] of Object.entries(all)) {
+      if (existSid === sid) continue;
+      if (!val || !val.deviceId) continue;
+      if (val.deviceId !== deviceId) continue;
+      const age = now - Number(val.lastSeen || val.joinedAt || 0);
+      if (age < STALE_LOCK_TIMEOUT) {
+        // 心跳還活著 → 擋住
+        return { ok: false, reason: `此裝置已由 ${existSid} 號登入，請先登出再切換` };
+      } else {
+        // 心跳過期 → 舊殘留資料，直接清除
+        db.ref(fbRoom + '/sessions/' + existSid).remove().catch(() => {});
+      }
+    }
+  } catch(e) {}
+
   const result = await lockRef.transaction(current => {
     if (current && current.tabId !== tabId) {
       const lastSeen = Number(current.lastSeen || current.joinedAt || 0);
@@ -545,7 +564,6 @@ async function claimSeat(sid) {
     return { ok: false, reason: '座位鎖定失敗，請重試' };
 
   seatRef = lockRef;
-  // 關閉頁面時直接刪除節點，讓其他裝置可以立即接手
   lockRef.onDisconnect().remove();
   startSeatHeartbeat();
   return { ok: true };
