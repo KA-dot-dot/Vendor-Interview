@@ -800,8 +800,9 @@ function fbStartListen() {
     S.anns     = remote.anns     || S.anns;
     S.stage    = remote.stage    || S.stage;
     S.ts       = remote.ts;
-    lastTs     = remote.ts;  // 同步 lastTs，避免 setInterval 用舊資料覆蓋
+    lastTs     = remote.ts;
     try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e) {}
+    rebuildAnnList();  // 先重建避免重複卡片
     renderAll(); processAnns();
   }, err => {
     console.warn('Firebase listener error:', err);
@@ -1243,6 +1244,14 @@ function drainVQ(){
     speechSynthesis.speak(u);
   });
 }
+// VQ 看門狗：每10秒檢查是否卡住，若 VQ 有內容但沒在播就強制重啟
+setInterval(()=>{
+  if(VQ.length>0 && !VSP) drainVQ();
+  // 防止 speechSynthesis 卡住（部分瀏覽器問題）
+  if(VSP && speechSynthesis.speaking===false && VQ.length>0){
+    VSP=false; drainVQ();
+  }
+},10000);
 function playBeep(freq,playNow,cb){
   if(!playNow){cb();return;}
   try{
