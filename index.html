@@ -574,16 +574,20 @@ async function claimSeat(sid, cid) {
 
 async function releaseSeat(sid) {
   stopSeatHeartbeat();
-  if (!db || !fbRoom || !seatRef) return;
-  try {
-    await seatRef.onDisconnect().cancel();
-    const snap = await seatRef.once('value');
-    const val = snap.val();
-    if (val && (val.tabId === tabId || val.deviceId === deviceId)) {
-      // 標記 disconnected，讓下一個裝置可以立即接手（不需等 45 秒）
-      await seatRef.update({ connected: false, disconnected: true, disconnectedAt: Date.now() });
-    }
-  } catch(e) {}
+  // 取消 onDisconnect
+  if (seatRef) { try { await seatRef.onDisconnect().cancel(); } catch(e) {} }
+  // 直接用 sid 找節點，不依賴 seatRef（更可靠）
+  if (db && fbRoom && sid) {
+    const lockRef = db.ref(fbRoom + '/sessions/' + sid);
+    try {
+      const snap = await lockRef.once('value');
+      const val = snap.val();
+      // 只要是同裝置就標記 disconnected，讓下一個登入可立即接手
+      if (val && (val.tabId === tabId || val.deviceId === deviceId)) {
+        await lockRef.update({ connected: false, disconnected: true, disconnectedAt: Date.now() });
+      }
+    } catch(e) {}
+  }
   seatRef = null;
 }
 
