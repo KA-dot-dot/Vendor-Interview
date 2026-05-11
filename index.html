@@ -524,7 +524,10 @@ function fbSaveState() {
 
 // ─── 座位鎖定（claimSeat）── 同座號只能一台裝置登入 ────
 async function claimSeat(sid, cid) {
-  if (!db || !fbRoom) return { ok: true }; // 無 Firebase 時不擋
+  if (!db) return { ok: true }; // 無 Firebase 時不擋
+  // fbRoom 可能還沒設定（尚未進入服務台），先計算
+  if (!fbRoom && S.students.length) fbRoom = computeRoomKey();
+  if (!fbRoom) return { ok: true }; // 無法計算 room key
 
   const lockRef = db.ref(fbRoom + '/sessions/' + sid);
   const now = Date.now();
