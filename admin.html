@@ -795,7 +795,9 @@ function fbStartListen() {
     const remote = snap.val();
     if (!remote || !remote.ts) return;
     if (remote.ts <= (S.ts || 0)) return;
-    S.statuses = remote.statuses || S.statuses;
+    // 只有 remote.statuses 有實際內容才覆蓋，避免空物件清空媒合記錄
+    if (remote.statuses && Object.keys(remote.statuses).length > 0)
+      S.statuses = remote.statuses;
     S.log      = remote.log      || S.log;
     S.anns     = remote.anns     || S.anns;
     S.stage    = remote.stage    || S.stage;
@@ -1140,11 +1142,10 @@ function pushAnn(type,sid,cid){
 function processAnns(){
   const pending=S.anns.filter(a=>!a.done&&a.id!==LAST_ANN);
   if(!pending.length)return;
-  pending.forEach(a=>{
+  pending.forEach(a=>{\
     const c=annContent(a);
     if(c){
       pushMQ(`${c.icon} ${c.title}`);
-      // 不刪除 inter 卡，讓歷史記錄保留在右側小卡區
       ANN_LIST.push(c);
       if(ANN_LIST.length>MQ_MAX)ANN_LIST.shift();
     }
@@ -1153,7 +1154,8 @@ function processAnns(){
     sessionStorage.setItem('ims_last_ann',a.id);
   });
   save();
-  if(!VSP)drainVQ();
+  renderDispAnn(); // 公告卡片即時更新
+  if(!VSP)drainVQ(); // 聲音在 save 後立即啟動
 }
 
 // ── 跑馬燈播報系統 ──────────────────────────────────
@@ -1238,7 +1240,8 @@ function drainVQ(){
   if(!VQ.length){VSP=false;return;}
   VSP=true;
   const item=VQ.shift();
-  playBeep(item.freq,item.first,()=>{
+  // 先播提示音，提示音結束後才播語音（確保順序一致）
+  playBeep(item.freq, item.first, ()=>{
     const u=new SpeechSynthesisUtterance(item.txt);
     u.lang='zh-TW';
     u.rate=S.cfg.rate||0.85;
@@ -1252,7 +1255,6 @@ function drainVQ(){
 // VQ 看門狗：每10秒檢查是否卡住，若 VQ 有內容但沒在播就強制重啟
 setInterval(()=>{
   if(VQ.length>0 && !VSP) drainVQ();
-  // 防止 speechSynthesis 卡住（部分瀏覽器問題）
   if(VSP && speechSynthesis.speaking===false && VQ.length>0){
     VSP=false; drainVQ();
   }
