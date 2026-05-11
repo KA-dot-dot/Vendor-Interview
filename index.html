@@ -530,18 +530,21 @@ async function claimSeat(sid, cid) {
   const now = Date.now();
 
   // ── 先檢查此裝置是否已有其他座號登入 ──
-  // 掃描所有 sessions，若發現同 deviceId 但不同 sid → 擋住
+  // 掃描所有 sessions，若發現同 deviceId 但不同 sid → 擋住；過期的直接刪除
   try {
     const allSnap = await db.ref(fbRoom + '/sessions').once('value');
     const all = allSnap.val() || {};
     for (const [existSid, val] of Object.entries(all)) {
-      if (existSid === sid) continue; // 同座號跳過（後面 transaction 處理）
+      if (existSid === sid) continue;
       if (!val || !val.deviceId) continue;
       if (val.deviceId !== deviceId) continue;
-      // 同裝置已登入其他座號 → 檢查心跳是否還活著
       const age = now - Number(val.lastSeen || val.joinedAt || 0);
       if (age < STALE_LOCK_TIMEOUT) {
+        // 心跳還活著 → 擋住
         return { ok: false, reason: `此裝置已由 ${existSid} 號登入，請先登出再切換` };
+      } else {
+        // 心跳過期 → 舊殘留資料，直接清除
+        db.ref(fbRoom + '/sessions/' + existSid).remove().catch(() => {});
       }
     }
   } catch(e) {}
