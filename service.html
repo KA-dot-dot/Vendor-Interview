@@ -426,7 +426,8 @@ function initFirebase() {
 
 // 從學生+廠商 id 產生穩定的 room key（與管理端/index.html 相同演算法）
 function computeRoomKey() {
-  const raw = (S.students || []).map(s => s.id).join(',')
+  const raw = (S.roomId || '') + '|'
+            + (S.students || []).map(s => s.id).join(',')
             + '|' + (S.companies || []).map(c => c.id).join(',');
   let h = 5381;
   for (let i = 0; i < raw.length; i++) { h = ((h << 5) + h) ^ raw.charCodeAt(i); h >>>= 0; }
@@ -455,7 +456,7 @@ function fbStartListen() {
       }
       return;
     }
-    if (remote.ts <= (S.ts || 0)) return;
+    if (remote.ts <= (S.ts || 0) && remote.stage === S.stage) return;
     const prevStage = S.stage || 1;
     if (remote.statuses && Object.keys(remote.statuses).length > 0) {
       const merged = Object.assign({}, remote.statuses);
@@ -600,7 +601,7 @@ let S = null;   // shared state (read from localStorage)
 let ME = null;  // {id, name, coId}
 
 function defState(){
-  return{stage:1,students:[],companies:[],statuses:{},preSched:{},log:[],anns:[],cfg:{voice:true,repeat:2,rate:0.85,vUri:''},ts:0};
+  return{stage:1,roomId:null,students:[],companies:[],statuses:{},preSched:{},log:[],anns:[],cfg:{voice:true,repeat:2,rate:0.85,vUri:''},ts:0};
 }
 
 // ══════════════════════════════════════════════════
@@ -1022,6 +1023,7 @@ function toggleTheme(){
 function applyPayload(payload){
   if(!payload||!Array.isArray(payload.students)||!Array.isArray(payload.companies))return false;
   load();
+  S.roomId=payload.roomId||null;
   S.stage=payload.stage||1;
   S.students=payload.students;
   S.companies=payload.companies;
@@ -1029,13 +1031,10 @@ function applyPayload(payload){
   if(payload.cfg)S.cfg=Object.assign(S.cfg||{},payload.cfg);
   // 只在第一次載入（沒有任何面試記錄）時重設 statuses
   // 若已有面試記錄（有人在面試或已媒合），不重置，讓 Firebase listener 負責同步
-  const hasActivity = S.statuses && Object.values(S.statuses).some(st=>st.s!=='available');
-  if(!hasActivity){
-    const newSt={};
-    payload.students.forEach(s=>{newSt[s.id]={s:'available',iw:null,mw:null};});
-    S.statuses=newSt;
-    S.log=[];S.anns=[];
-  }
+  const newSt={};
+  payload.students.forEach(s=>{newSt[s.id]={s:'available',iw:null,mw:null};});
+  S.statuses=newSt;
+  S.log=[];S.anns=[];
   // 設一個很舊的 ts，讓 Firebase listener 可以用最新資料覆蓋
   S.ts=1;
   try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){return false;}
