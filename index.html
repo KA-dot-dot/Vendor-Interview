@@ -7,9 +7,6 @@
 <meta name="color-scheme" content="only light">
 <script>(function(){const t=localStorage.getItem("ims_theme")||"0";document.documentElement.setAttribute("data-dark",t==="1"?"1":"0");})();</script>
 <title>媒合面試系統 — 服務台</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <style>
 :root{
   color-scheme:only light;
@@ -283,6 +280,8 @@ html[data-dark="1"] .leg-dot{
   color:#111827!important;
 }
 </style>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 </head>
 <body>
 
@@ -386,16 +385,22 @@ html[data-dark="1"] .leg-dot{
 // ══════════════════════════════════════════════════
 const KEY = 'ims_state_v2';
 const BC  = new BroadcastChannel('ims_bc_v2');
+// tabId：重整時沿用同一個，新分頁才是全新的（sessionStorage 分頁隔離）
+const navEntry = performance.getEntriesByType && performance.getEntriesByType('navigation')[0];
+const isPageReload = navEntry ? navEntry.type === 'reload' : performance.navigation?.type === 1;
+let tabId = isPageReload ? (sessionStorage.getItem('ims_tab_id') || '') : '';
+if (!tabId) {
+  tabId = Date.now() + '_' + Math.random().toString(36).slice(2, 10);
+  sessionStorage.setItem('ims_tab_id', tabId);
+}
+// deviceId：同一台設備所有分頁共用（localStorage）
+const deviceId = (() => { let d=localStorage.getItem('ims_device_id'); if(!d){d=Date.now()+'_'+Math.random().toString(36).slice(2,10);localStorage.setItem('ims_device_id',d);} return d; })();
+const STALE_LOCK_TIMEOUT = 45000; // 45秒無心跳視為過期（與 index.html 一致）
+const LOCK_HEARTBEAT_MS = 5000;
 
-let S  = null;   // shared state
-let ME = null;   // {id, coId, coName}
-
-// ── Firebase（直接沿用 teacher.html 的專案設定）────────────────────
+// ── Firebase 跨裝置即時同步 ────────────────────────────────────────
 const FIREBASE_CONFIG = (() => {
-  try {
-    const raw = localStorage.getItem('firebase_config_v1');
-    if (raw) return JSON.parse(raw);
-  } catch(e) {}
+  try { const r = localStorage.getItem('firebase_config_v1'); if(r) return JSON.parse(r); } catch(e) {}
   return {
     apiKey:            "AIzaSyBVyKP-j7_CP3SRf8h3TYhZXLQuTdx0YQ0",
     authDomain:        "project-4198352826191193750.firebaseapp.com",
@@ -408,45 +413,19 @@ const FIREBASE_CONFIG = (() => {
 })();
 
 let db = null;
-let fbRoom = null;   // e.g. "ims_room_a3f1b2"
+let fbRoom = null;
 let fbStateRef = null;
 let fbStateListener = null;
-let fbLastReceived = 0;
-let fbReconnectTimer = null;
 
-// 每個瀏覽器分頁有唯一 tabId（沿用 student.html 模式）
-const navEntry = performance.getEntriesByType && performance.getEntriesByType('navigation')[0];
-const isPageReload = navEntry ? navEntry.type === 'reload' : performance.navigation?.type === 1;
-let tabId = isPageReload ? (sessionStorage.getItem('ims_tab_id') || '') : '';
-if (!tabId) {
-  tabId = Date.now() + '_' + Math.random().toString(36).slice(2, 10);
-  sessionStorage.setItem('ims_tab_id', tabId);
-}
-// deviceId：同一台設備所有分頁共用（localStorage），用於擋同裝置多開
-let deviceId = localStorage.getItem('ims_device_id') || '';
-if (!deviceId) {
-  deviceId = Date.now() + '_' + Math.random().toString(36).slice(2, 10);
-  localStorage.setItem('ims_device_id', deviceId);
-}
-
-let seatRef = null;
-let seatHeartbeat = null;
-const STALE_LOCK_TIMEOUT = 45000; // 45 秒無心跳視為過期
-
-// ─── Firebase Init ────────────────────────────────────────────────
 function initFirebase() {
-  if (!FIREBASE_CONFIG || !FIREBASE_CONFIG.databaseURL) return false;
   try {
     if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
     db = firebase.database();
     return true;
-  } catch(e) {
-    console.warn('Firebase init failed:', e);
-    return false;
-  }
+  } catch(e) { console.warn('Firebase init failed:', e); return false; }
 }
 
-// ─── Room key：從學生+廠商列表產生穩定的 hash，確保同一場媒合用同一個 room ──
+// 從學生+廠商 id 產生穩定的 room key（與管理端/index.html 相同演算法）
 function computeRoomKey() {
   const listKey = (S.students || []).map(s => s.id).join(',')
             + '|' + (S.companies || []).map(c => c.id).join(',');
@@ -456,9 +435,13 @@ function computeRoomKey() {
   return 'ims_' + h.toString(16).padStart(8, '0');
 }
 
-// ─── Firebase 狀態同步（唯讀監聽：由管理端或其他服務台寫入）─────────────
+let fbLastReceived = 0;  // 最後收到 Firebase 資料的時間
+let fbReconnectTimer = null;
+
 function fbStartListen() {
-  if (!db || !fbRoom) return;
+  if (!db) return;
+  if (!fbRoom && S.students.length) fbRoom = computeRoomKey();
+  if (!fbRoom) return;
   if (fbStateListener) { fbStateRef.off('value', fbStateListener); }
   fbStateRef = db.ref(fbRoom + '/state');
   fbLastReceived = Date.now();
@@ -493,10 +476,7 @@ function fbStartListen() {
     if (prevStage === 1 && S.stage === 2 && ME) {
       const mySt = S.statuses[ME.id];
       if (!mySt || mySt.s !== 'matched') {
-        // 未媒合 → 釋放座位鎖，讓學生可以重新登入或換廠商
-        releaseSeat(ME.id).then(() => {
-          seatRef = null;
-        });
+        releaseSeat(ME.id).then(() => { seatRef = null; });
         toast('已進入第二階段，座位已釋放', 'ok');
       }
     }
@@ -522,9 +502,10 @@ function fbStopListen() {
   }
 }
 
-// ─── Firebase 寫入（save 時呼叫，跨裝置即時同步）────────────────────────
 function fbSaveState() {
-  if (!db || !fbRoom) return;
+  if (!db) return;
+  if (!fbRoom && S.students.length) fbRoom = computeRoomKey();
+  if (!fbRoom) return;
   const payload = {
     statuses: S.statuses || {},
     log:  (S.log  || []).slice(0, 60),
@@ -535,56 +516,57 @@ function fbSaveState() {
   db.ref(fbRoom + '/state').set(payload).catch(e => console.warn('fbSave error:', e));
 }
 
-// ─── 座位鎖定（claimSeat）── 同座號只能一台裝置登入 ────
-async function claimSeat(sid, cid) {
+// ── 座位鎖定：同座號只能一台裝置登入 ────────────────────────────────
+let seatRef = null;
+let seatHeartbeatTimer = null;
+
+async function claimSeat(sid) {
   if (!db) return { ok: true };
   if (!fbRoom && S.students.length) fbRoom = computeRoomKey();
   if (!fbRoom) return { ok: true };
 
   const lockRef = db.ref(fbRoom + '/sessions/' + sid);
   const now = Date.now();
+  const freshLock = extra => Object.assign({
+    sid, deviceId, tabId,
+    joinedAt: now,
+    lastSeen: now,
+    leaseExpiresAt: now + STALE_LOCK_TIMEOUT,
+    connected: true,
+    disconnected: false,
+    disconnectedAt: null
+  }, extra || {});
+  const isExpired = current => {
+    const expiresAt = Number(current.leaseExpiresAt || 0);
+    if (expiresAt && now >= expiresAt) return true;
+    const lastSeen = Number(current.lastSeen || current.joinedAt || 0);
+    return !lastSeen || now - lastSeen >= STALE_LOCK_TIMEOUT;
+  };
 
   const result = await lockRef.transaction(current => {
-    if (current === null) {
-      // 座號完全空著 → 直接登入
-      return { sid, cid, deviceId, tabId, joinedAt: now, lastSeen: now, connected: true, disconnected: false };
-    }
-    if (current.tabId === tabId) {
-      // 同一個分頁（重整）→ 允許重連
-      return Object.assign({}, current, { lastSeen: now, connected: true, disconnected: false });
-    }
-    if (current.disconnected === true) {
-      // 對方已關閉視窗（onDisconnect 標記）→ 任何裝置可立即接手
-      return Object.assign({}, current, { cid, deviceId, tabId, lastSeen: now, connected: true, disconnected: false, disconnectedAt: null });
-    }
-    if (current.deviceId === deviceId) {
-      // 同裝置不同分頁且仍在線 → 擋住（同一台電腦同座號只能一個視窗）
-      return undefined;
-    }
-    // 不同裝置且仍在線 → 檢查殭屍鎖（45秒無心跳）
-    const lastSeen = Number(current.lastSeen || current.joinedAt || 0);
-    if (lastSeen && now - lastSeen >= STALE_LOCK_TIMEOUT) {
-      return Object.assign({}, current, { cid, deviceId, tabId, lastSeen: now, connected: true, disconnected: false, disconnectedAt: null });
-    }
-    return undefined; // 正常在線的其他裝置 → 拒絕
+    if (current === null) return freshLock();
+    if (current.tabId === tabId) return freshLock({ joinedAt: current.joinedAt || now });
+    if (current.disconnected === true || current.connected === false || isExpired(current)) return freshLock();
+    if (current.deviceId === deviceId) return undefined;
+    return undefined;
   });
 
   if (!result.committed) {
     const snap = await lockRef.once('value');
-    const val = snap.val();
-    if (val && val.deviceId === deviceId) {
-      return { ok: false, reason: '此座號已在同一裝置的其他分頁開啟，請關閉重複的分頁' };
+    const val = snap.val() || {};
+    const lastSeen = Number(val.lastSeen || val.joinedAt || 0);
+    const remain = lastSeen ? Math.max(1, Math.ceil((STALE_LOCK_TIMEOUT - (Date.now() - lastSeen)) / 1000)) : 45;
+    if (val.deviceId === deviceId) {
+      return { ok: false, reason: `此座號已在同一裝置的其他分頁開啟，請關閉重複分頁或等約 ${remain} 秒後再試` };
     }
-    return { ok: false, reason: '此座號已被另一裝置登入，請等對方關閉後再試' };
+    return { ok: false, reason: `此座號已被另一裝置登入，請等對方關閉或約 ${remain} 秒後再試` };
   }
 
   seatRef = lockRef;
-  // 關閉視窗時標記 disconnected（讓下次可立即接手，不需等 45 秒）
-  lockRef.onDisconnect().update({ connected: false, disconnected: true, disconnectedAt: firebase.database.ServerValue.TIMESTAMP });
+  lockRef.onDisconnect().update({ connected: false, disconnected: true, disconnectedAt: firebase.database.ServerValue.TIMESTAMP, leaseExpiresAt: firebase.database.ServerValue.TIMESTAMP });
   startSeatHeartbeat();
   return { ok: true };
 }
-
 async function releaseSeat(sid) {
   stopSeatHeartbeat();
   // 取消 onDisconnect
@@ -597,7 +579,7 @@ async function releaseSeat(sid) {
       const val = snap.val();
       // 只要是同裝置就標記 disconnected，讓下一個登入可立即接手
       if (val && (val.tabId === tabId || val.deviceId === deviceId)) {
-        await lockRef.update({ connected: false, disconnected: true, disconnectedAt: Date.now() });
+        await lockRef.update({ connected: false, disconnected: true, disconnectedAt: Date.now(), leaseExpiresAt: Date.now() });
       }
     } catch(e) {}
   }
@@ -606,16 +588,18 @@ async function releaseSeat(sid) {
 
 function startSeatHeartbeat() {
   stopSeatHeartbeat();
-  if (!seatRef) return;
   const ping = () => {
-    if (seatRef) seatRef.update({ lastSeen: Date.now(), connected: true }).catch(() => {});
+    if (seatRef) { const now=Date.now(); seatRef.update({ lastSeen: now, leaseExpiresAt: now + STALE_LOCK_TIMEOUT, connected: true, disconnected: false }).catch(() => {}); }
   };
   ping();
-  seatHeartbeat = setInterval(ping, 5000);
+  seatHeartbeatTimer = setInterval(ping, LOCK_HEARTBEAT_MS);
 }
 function stopSeatHeartbeat() {
-  if (seatHeartbeat) { clearInterval(seatHeartbeat); seatHeartbeat = null; }
+  if (seatHeartbeatTimer) { clearInterval(seatHeartbeatTimer); seatHeartbeatTimer = null; }
 }
+
+let S = null;   // shared state (read from localStorage)
+let ME = null;  // {id, name, coId}
 
 function defState(){
   return{stage:1,roomId:null,students:[],companies:[],statuses:{},preSched:{},log:[],anns:[],cfg:{voice:true,repeat:2,rate:0.85,vUri:''},ts:0};
@@ -630,10 +614,10 @@ function load(){
   normalizeCompanies();
 }
 function save(){
-  S.ts = Date.now();
-  try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e) {}
-  try { BC.postMessage('u'); } catch(e) {}
-  fbSaveState();   // 寫入 Firebase，讓其他裝置即時同步
+  S.ts=Date.now();
+  localStorage.setItem(KEY,JSON.stringify(S));
+  try{BC.postMessage('u');}catch{}
+  fbSaveState();  // 寫入 Firebase，讓管理端即時看到更新
 }
 
 // ══════════════════════════════════════════════════
@@ -690,19 +674,20 @@ function onCoSelect(){
   document.getElementById('loginErr').textContent='';
 }
 async function tryLogin(){
-  const rawId = document.getElementById('loginId').value.trim();
-  const cid   = document.getElementById('loginCo').value;
-  const errEl = document.getElementById('loginErr');
-  const btn   = document.getElementById('loginBtn');
-  if(!rawId){ errEl.textContent='請輸入座號'; return; }
-  if(!cid)  { errEl.textContent='請選擇廠商'; return; }
-  const sid = rawId.padStart(2,'0');
-  const co  = S.companies.find(c=>c.id===cid);
-  if(!co){ errEl.textContent='廠商不存在，請確認管理端設定'; return; }
+  const rawId=document.getElementById('loginId').value.trim();
+  const cid=document.getElementById('loginCo').value;
+  const errEl=document.getElementById('loginErr');
+  const btn=document.getElementById('loginBtn');
+  if(!rawId){errEl.textContent='請輸入座號';return;}
+  if(!cid){errEl.textContent='請選擇廠商';return;}
+  const sid=rawId.padStart(2,'0');
+  const co=S.companies.find(c=>c.id===cid);
+  if(!co){errEl.textContent='廠商不存在，請確認管理端設定';return;}
 
-  btn.disabled = true;
-  errEl.textContent = '🔄 同步最新狀態…';
+  btn.disabled=true;
+  errEl.textContent='🔄 同步最新狀態…';
 
+  // 確保 Firebase 和 fbRoom 都就緒，並在登入前先拉最新雲端狀態
   if(db && !fbRoom && S.students.length) fbRoom = computeRoomKey();
   if(db && fbRoom){
     try{
@@ -712,27 +697,24 @@ async function tryLogin(){
     }catch(e){}
   }
 
-  errEl.textContent = '🔒 驗證座位中…';
+  errEl.textContent='🔒 驗證座位中…';
 
-  // 嘗試取得座位鎖
-  const claim = await claimSeat(sid, cid);
+  const claim = await claimSeat(sid);
   if(!claim.ok){
-    errEl.textContent = '⚠️ ' + claim.reason;
-    btn.disabled = false;
+    errEl.textContent='⚠️ ' + claim.reason;
+    btn.disabled=false;
     return;
   }
 
-  ME = { id: sid, coId: cid, coName: co.name };
-  btn.disabled = false;
-  errEl.textContent = '';
+  ME={id:sid,coId:cid,coName:co.name};
+  btn.disabled=false;
+  errEl.textContent='';
   enterService();
 }
 async function logout(){
   if(!confirm('確定登出？'))return;
-  if(ME){
-    await releaseSeat(ME.id, ME.coId);
-    fbStopListen();
-  }
+  if(ME) await releaseSeat(ME.id);
+  fbStopListen();
   ME=null;
   document.getElementById('svcScreen').style.display='none';
   document.getElementById('loginScreen').style.display='flex';
@@ -748,11 +730,8 @@ function enterService(){
   document.getElementById('svcWho').textContent=`${ME.id}號`;
   document.getElementById('svcCo').textContent=ME.coName;
   document.getElementById('svcStage').textContent=`第${S.stage}階段`;
-  // 若 fbRoom 尚未設定（例如未經 QR 掃描，直接用本地資料），也啟動監聽
-  if(db){
-    if(!fbRoom) fbRoom = computeRoomKey();
-    fbStartListen();
-  }
+  // 連接 Firebase 即時同步（確保每次登入都重新建立監聽）
+  if(db){ if(!fbRoom) fbRoom = computeRoomKey(); fbStartListen(); }
   renderService();
 }
 
@@ -804,17 +783,7 @@ function pushAnn(type,sid,cid){
 
 
 // ── 跑馬燈播報系統（服務台，僅視覺）─────────────────
-// SHOWN 存 sessionStorage，重整後不重播舊公告
-const SHOWN_KEY='ims_shown_ids';
-function shownLoad(){
-  try{const r=sessionStorage.getItem(SHOWN_KEY);return r?new Set(JSON.parse(r)):new Set();}
-  catch{return new Set();}
-}
-function shownAdd(id){
-  SHOWN.add(id);
-  try{sessionStorage.setItem(SHOWN_KEY,JSON.stringify([...SHOWN]));}catch{}
-}
-const SHOWN=shownLoad();
+const SHOWN=new Set();
 const MQ_LIST=[];
 const MQ_MAX=20;
 const MQ_SEP='　　◆　　';
@@ -859,7 +828,7 @@ function processAnns(){
   S.anns.filter(a=>!SHOWN.has(a.id)).forEach(a=>{
     const c=annContent(a);
     if(c) pushMQ(`${c.icon} ${c.title}`);
-    shownAdd(a.id);
+    SHOWN.add(a.id);
   });
 }
 
@@ -985,7 +954,6 @@ function renderService(){
 }
 
 function refreshState(){
-  // 先強制從 Firebase 拉取最新資料
   if(db && fbRoom){
     db.ref(fbRoom + '/state').once('value').then(snap => {
       const remote = snap.val();
@@ -1054,10 +1022,8 @@ function toggleTheme(){
 }
 
 // ══════════════════════════════════════════════════
-//  QR Code 資料載入（支援新版 Firebase room key 及舊版 hash）
+//  QR CODE 資料載入（?room=KEY → 從 Firebase 取資料）
 // ══════════════════════════════════════════════════
-
-// ── 共用：把 payload 寫入 localStorage 並初始化頁面 ───────────────
 function applyRemoteState(remote){
   if(!remote||!remote.ts)return false;
   if(remote.statuses){
@@ -1099,14 +1065,11 @@ function applyPayload(payload){
   return true;
 }
 
-// ── 新版：?room=KEY → 從 Firebase 取資料 ────────────────────────
 (function detectRoomImport(){
   const params=new URLSearchParams(location.search);
   const roomKey=params.get('room');
   if(!roomKey)return;
-  // 清除 URL 參數，避免重新整理再次觸發
   history.replaceState(null,'',location.pathname);
-  // 等 Firebase 初始化後再讀
   function tryFetch(retries){
     if(!db){
       if(retries>0) setTimeout(()=>tryFetch(retries-1),400);
@@ -1121,41 +1084,16 @@ function applyPayload(payload){
       }catch(e){ console.warn('room payload parse error',e); }
     }).catch(e=>{ console.warn('firebase room fetch error',e); });
   }
-  // 最多等 2 秒讓 Firebase 連上
   setTimeout(()=>tryFetch(5), 200);
-})();
-
-// ── 舊版：#ims_init= 或 ?ims_init=（向下相容）────────────────────
-(function detectHashImport(){
-  const search=location.search;
-  const hash=location.hash;
-  const m=search.match(/[?&]ims_init=([A-Za-z0-9+/=_\-~.]+)/)||
-           hash.match(/[#&]ims_init=([A-Za-z0-9+/=_\-~.]+)/);
-  if(!m)return;
-  try{
-    let json;
-    try{json=LZString.decompressFromEncodedURIComponent(m[1]);}catch{}
-    if(!json||json==='null'){
-      try{json=decodeURIComponent(escape(atob(m[1])));}catch{}
-    }
-    if(!json)return;
-    const payload=JSON.parse(json);
-    applyPayload(payload);
-    history.replaceState(null,'',location.pathname);
-  }catch(e){ /* 解析失敗，維持正常登入流程 */ }
 })();
 
 // ══════════════════════════════════════════════════
 //  INIT
 // ══════════════════════════════════════════════════
 load();
-initFirebase();   // 連接 Firebase（沿用 teacher.html 的專案）
-
-// 頁面關閉時自動釋放座位（Firebase onDisconnect 也會處理，這是雙保險）
-window.addEventListener('beforeunload', () => {
-  if(ME) releaseSeat(ME.id);
-});
-
+initFirebase();   // 連接 Firebase 以支援跨裝置即時同步
+// 若已有學生/廠商資料（非首次），立即開始監聽
+if(db && S.students.length){ fbRoom = computeRoomKey(); fbStartListen(); }
 (function(){const t=document.documentElement.getAttribute('data-dark');const b=document.getElementById('themeBtn');if(b)b.textContent=t==='1'?'☀':'🌙';})();
 // Pre-populate company list if data already exists
 if(S.companies.length){
@@ -1163,6 +1101,13 @@ if(S.companies.length){
   sel.innerHTML='<option value="">— 請選擇廠商 —</option>'+
     S.companies.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
 }
+// 頁面關閉/重整時自動釋放座位鎖
+window.addEventListener('beforeunload', () => {
+  if(ME) releaseSeat(ME.id);
+});
+window.addEventListener('pagehide', () => {
+  if(ME) releaseSeat(ME.id);
+});
 </script>
 </body>
 </html>
