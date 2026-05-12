@@ -464,7 +464,15 @@ function fbStartListen() {
   fbStateListener = fbStateRef.on('value', snap => {
     fbLastReceived = Date.now();
     const remote = snap.val();
-    if (!remote || !remote.ts) return;
+    if (!remote || !remote.ts) {
+      // Firebase /state 被清除（管理端重置），清空本地狀態讓學生重新登入
+      if (S.statuses && Object.values(S.statuses).some(st=>st.s!=='available')) {
+        S.statuses={}; S.log=[]; S.anns=[]; S.stage=1; S.ts=0;
+        try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}
+        if(ME) renderService();
+      }
+      return;
+    }
     if (remote.ts <= (S.ts || 0)) return;  // 不比本地新，忽略
     const prevStage = S.stage || 1;
     // statuses 做合併：遠端有、本地沒有的才更新
