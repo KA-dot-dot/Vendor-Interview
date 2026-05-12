@@ -806,6 +806,7 @@ function fbStartListen() {
     S.log      = remote.log      || [];
     S.anns     = remote.anns     || [];
     S.stage    = remote.stage    || S.stage;
+        if(remote.preSched) S.preSched = remote.preSched;
     S.ts       = remote.ts;
     lastTs     = remote.ts;
     try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e) {}
@@ -835,6 +836,7 @@ function fbSaveState() {
     log:  (S.log  || []).slice(0, 60),
     anns: (S.anns || []).slice(-60),
     stage: S.stage || 1,
+    preSched: S.preSched || {},
     ts: Date.now()
   };
   db.ref(fbRoom + '/state').set(payload).catch(e => console.warn('fbSave error:', e));
@@ -1105,14 +1107,62 @@ function confirmMatch(sid,cid){
   save();return{ok:true};
 }
 
+function releaseStudentSession(sid){
+  if(!db || !fbRoom || !sid)return;
+  db.ref(fbRoom + '/sessions/' + sid).update({
+    connected:false,
+    disconnected:true,
+    disconnectedAt:Date.now(),
+    leaseExpiresAt:Date.now()
+  }).catch(()=>{});
+}
+function cancelMatch(sid){
+  const st=sts(sid);
+  if(st.s!=='matched')return{ok:false,msg:'此同學目前不是已媒合狀態'};
+  const oldCid=st.mw;
+  setSts(sid,'available');
+  const added=(S.stage||1)>=2?ensureStudentInAllPreSched(sid):0;
+  addLog(`↩ 已取消 ${sid}號 ${stName(sid)} 與 ${coName(oldCid)} 的媒合，恢復可面試`);
+  if(added)addLog(`已將 ${sid}號 ${stName(sid)} 補入第二階段廠商預排名單（新增 ${added} 筆）`);
+  releaseStudentSession(sid);
+  save();return{ok:true};
+}
+function ensureStudentInAllPreSched(sid){
+  if(!sid)return 0;
+  let added=0;
+  S.companies.forEach(c=>{
+    const ps=S.preSched[c.id];
+    if(!ps || ps.mode==='all')return;
+    const list=new Set(ps.list||[]);
+    if(!list.has(sid)){list.add(sid);added++;}
+    S.preSched[c.id]={mode:'spec',list:[...list].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}))};
+  });
+  return added;
+}
+function ensureUnmatchedInAllPreSched(){
+  const ids=S.students.filter(s=>sts(s.id).s!=='matched').map(s=>s.id);
+  if(!ids.length)return 0;
+  let added=0;
+  S.companies.forEach(c=>{
+    const ps=S.preSched[c.id];
+    if(!ps || ps.mode==='all')return;
+    const list=new Set(ps.list||[]);
+    ids.forEach(id=>{if(!list.has(id)){list.add(id);added++;}});
+    S.preSched[c.id]={mode:'spec',list:[...list].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}))};
+  });
+  return added;
+}
 // ══════════════════════════════════════════════════
 //  STAGE
 // ══════════════════════════════════════════════════
 function advanceStage(){
   if(S.stage>=2){toast('已在第二階段','warn');return;}
   if(!confirm('確定進入第二階段？未媒合的同學繼續面試，已媒合者不再參與。'))return;
-  S.stage=2;addLog('── 進入第二階段 ──');pushAnn('stage2',null,null);
-  save();renderAll();toast('已進入第二階段','ok');
+  const added=ensureUnmatchedInAllPreSched();
+  S.stage=2;addLog('── 進入第二階段 ──');
+  if(added)addLog(`已將第一階段未媒合學生補入廠商預排名單（新增 ${added} 筆）`);
+  pushAnn('stage2',null,null);
+  save();renderAll();toast(added?`已進入第二階段，並補入 ${added} 筆預排名單`:'已進入第二階段','ok');
   // 第二階段：清除所有未媒合學生的座位鎖（標記 disconnected，讓他們可以立即重新登入）
   if(db && fbRoom){
     db.ref(fbRoom + '/sessions').once('value').then(snap=>{
@@ -1339,6 +1389,14 @@ function adminMatch(sid){
   processAnns();renderMgmt();renderDispGrid();
 }
 
+function adminCancelMatch(sid){
+  const st=sts(sid);
+  const msg=`確定取消 ${sid}號 ${stName(sid)} 與 ${coName(st.mw)} 的媒合？取消後學生會恢復可邀請面試。`;
+  if(!confirm(msg))return;
+  const r=cancelMatch(sid);
+  if(!r.ok)toast(r.msg,'err');else toast('已取消媒合，學生可重新面試','ok');
+  renderAll();
+}
 // ══════════════════════════════════════════════════
 //  RENDER
 // ══════════════════════════════════════════════════
@@ -1490,6 +1548,10 @@ function renderMgmt(){
       acts=`<div class="sact">
         <button class="btn btn-ghost btn-sm" onclick="adminEnd('${s.id}')">結束</button>
         <button class="btn btn-success btn-sm" onclick="adminMatch('${s.id}')">媒合✓</button>
+      </div>`;
+    }else if(st.s==='matched'){
+      acts=`<div class="sact">
+        <button class="btn btn-warn btn-sm" onclick="adminCancelMatch('${s.id}')">取消媒合</button>
       </div>`;
     }
     return`<div class="scard ${cls}">
@@ -1682,6 +1744,7 @@ async function genShareLink(){
   if(!S.students.length){ toast('請先匯入學生名單','err'); return; }
   if(!S.companies.length){ toast('請先匯入廠商名單','err'); return; }
 
+  if((S.stage||1)>=2) ensureUnmatchedInAllPreSched();
   const key = Math.random().toString(36).slice(2,6) + Math.random().toString(36).slice(2,6);
   S.roomId = key;
   S.stage = 1;
