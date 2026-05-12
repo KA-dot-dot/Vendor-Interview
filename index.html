@@ -1062,10 +1062,17 @@ function applyPayload(payload){
   S.companies=payload.companies;
   S.preSched=payload.preSched||{};
   if(payload.cfg)S.cfg=Object.assign(S.cfg||{},payload.cfg);
-  const newSt={};
-  payload.students.forEach(s=>{newSt[s.id]={s:'available',iw:null,mw:null};});
-  S.statuses=newSt;
-  S.log=[];S.anns=[];S.ts=Date.now();
+  // 只在第一次載入（沒有任何面試記錄）時重設 statuses
+  // 若已有面試記錄（有人在面試或已媒合），不重置，讓 Firebase listener 負責同步
+  const hasActivity = S.statuses && Object.values(S.statuses).some(st=>st.s!=='available');
+  if(!hasActivity){
+    const newSt={};
+    payload.students.forEach(s=>{newSt[s.id]={s:'available',iw:null,mw:null};});
+    S.statuses=newSt;
+    S.log=[];S.anns=[];
+  }
+  // 設一個很舊的 ts，讓 Firebase listener 可以用最新資料覆蓋
+  S.ts=1;
   try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){return false;}
   if(db){ fbRoom=computeRoomKey(); fbStartListen(); }
   if(sel){
