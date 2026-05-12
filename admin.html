@@ -742,7 +742,8 @@ html[data-dark="1"] .smod-url{background:#0f172a;color:#93c5fd}
 // ══════════════════════════════════════════════════
 //  CONSTANTS & STATE
 // ══════════════════════════════════════════════════
-const KEY = 'ims_state_v2';
+const KEY = 'ims_admin_state_v2';
+const LEGACY_KEY = 'ims_state_v2';
 const BC  = new BroadcastChannel('ims_bc_v2');
 
 // ── Firebase 跨裝置即時同步 ────────────────────────────────────────
@@ -771,9 +772,9 @@ function initFirebase() {
 }
 
 function computeRoomKey() {
-  const raw = (S.roomId || '') + '|'
-            + (S.students || []).map(s => s.id).join(',')
+  const listKey = (S.students || []).map(s => s.id).join(',')
             + '|' + (S.companies || []).map(c => c.id).join(',');
+  const raw = S.roomId ? (S.roomId + '|' + listKey) : listKey;
   let h = 5381;
   for (let i = 0; i < raw.length; i++) { h = ((h << 5) + h) ^ raw.charCodeAt(i); h >>>= 0; }
   return 'ims_' + h.toString(16).padStart(8, '0');
@@ -795,12 +796,15 @@ function fbStartListen() {
     fbLastReceived = Date.now();
     const remote = snap.val();
     if (!remote || !remote.ts) return;
-    if (remote.ts <= (S.ts || 0) && remote.stage === S.stage) return;
-    // 只有 remote.statuses 有實際內容才覆蓋，避免空物件清空媒合記錄
-    if (remote.statuses && Object.keys(remote.statuses).length > 0)
-      S.statuses = remote.statuses;
-    S.log      = remote.log      || S.log;
-    S.anns     = remote.anns     || S.anns;
+    if (remote.statuses) {
+      const nextStatuses = {};
+      (S.students || []).forEach(s => {
+        nextStatuses[s.id] = remote.statuses[s.id] || {s:'available',iw:null,mw:null};
+      });
+      S.statuses = nextStatuses;
+    }
+    S.log      = remote.log      || [];
+    S.anns     = remote.anns     || [];
     S.stage    = remote.stage    || S.stage;
     S.ts       = remote.ts;
     lastTs     = remote.ts;
@@ -866,7 +870,7 @@ function defState(){
 //  STORAGE
 // ══════════════════════════════════════════════════
 function load(){
-  try{const d=localStorage.getItem(KEY);S=d?JSON.parse(d):defState();}
+  try{const d=localStorage.getItem(KEY)||localStorage.getItem(LEGACY_KEY);S=d?JSON.parse(d):defState();}
   catch{S=defState();}
   normalizeCompanies();
 }
