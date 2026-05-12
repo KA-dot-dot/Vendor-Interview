@@ -771,7 +771,8 @@ function initFirebase() {
 }
 
 function computeRoomKey() {
-  const raw = (S.students || []).map(s => s.id).join(',')
+  const raw = (S.roomId || '') + '|'
+            + (S.students || []).map(s => s.id).join(',')
             + '|' + (S.companies || []).map(c => c.id).join(',');
   let h = 5381;
   for (let i = 0; i < raw.length; i++) { h = ((h << 5) + h) ^ raw.charCodeAt(i); h >>>= 0; }
@@ -794,7 +795,7 @@ function fbStartListen() {
     fbLastReceived = Date.now();
     const remote = snap.val();
     if (!remote || !remote.ts) return;
-    if (remote.ts <= (S.ts || 0)) return;
+    if (remote.ts <= (S.ts || 0) && remote.stage === S.stage) return;
     // 只有 remote.statuses 有實際內容才覆蓋，避免空物件清空媒合記錄
     if (remote.statuses && Object.keys(remote.statuses).length > 0)
       S.statuses = remote.statuses;
@@ -849,6 +850,7 @@ let psChosen = new Set();
 function defState(){
   return{
     stage:1,
+    roomId:null,
     students:[],   // [{id:'01',name:'陳小明'}]
     companies:[],  // [{id:'c0',name:'A公司'}]
     statuses:{},   // {studentId:{s:'available'|'interviewing'|'matched',iw:coId|null,mw:coId|null}}
@@ -1676,7 +1678,21 @@ async function genShareLink(){
   if(!S.students.length){ toast('請先匯入學生名單','err'); return; }
   if(!S.companies.length){ toast('請先匯入廠商名單','err'); return; }
 
+  const key = Math.random().toString(36).slice(2,6) + Math.random().toString(36).slice(2,6);
+  S.roomId = key;
+  S.stage = 1;
+  S.statuses = {};
+  S.students.forEach(s=>{S.statuses[s.id]={s:'available',iw:null,mw:null};});
+  S.log = [];
+  S.anns = [];
+  fbRoom = computeRoomKey();
+  S.ts = Date.now();
+  localStorage.setItem(KEY, JSON.stringify(S));
+  try{BC.postMessage('u');}catch{}
+  renderAll();
+
   const payload = {
+    roomId:   S.roomId,
     stage:    S.stage || 1,
     students: S.students,
     companies:S.companies,
@@ -1698,13 +1714,20 @@ async function genShareLink(){
   urlBox.style.display = 'none';
   qrWrap.innerHTML = '<span style="font-size:12px;color:var(--muted)">產生中…</span>';
 
-  const key = Math.random().toString(36).slice(2,6) + Math.random().toString(36).slice(2,6);
   const roomPath = 'ims_qr_init/' + key;
 
   if(!db){ toast('Firebase 連線失敗，請檢查網路','err'); return; }
 
   try{
     await db.ref(roomPath).set({ payload: JSON.stringify(payload), ts: Date.now() });
+    await db.ref(fbRoom + '/state').set({
+      statuses: S.statuses || {},
+      log: [],
+      anns: [],
+      stage: S.stage || 1,
+      ts: Date.now()
+    });
+    fbStartListen();
     setTimeout(()=>{ try{ db.ref(roomPath).remove(); }catch{} }, 86400000);
   }catch(e){
     statusEl.textContent = '❌ 雲端上傳失敗：' + e.message;
