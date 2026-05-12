@@ -474,21 +474,13 @@ function fbStartListen() {
       }
       return;
     }
-    if (remote.ts <= (S.ts || 0) && remote.stage === S.stage) return;  // 不比本地新且階段相同，忽略
     const prevStage = S.stage || 1;
-    // statuses 做合併：遠端有、本地沒有的才更新
-    // 避免遠端舊資料覆蓋本地剛寫入的操作
-    if (remote.statuses && Object.keys(remote.statuses).length > 0) {
-      const merged = Object.assign({}, remote.statuses);
-      // 若本地的 ts 比 remote.ts 更近（本地剛有操作），保留本地狀態
-      const localAge = Date.now() - (S.ts || 0);
-      if (localAge < 3000) {
-        // 3秒內本地有操作，以本地為主，只補充遠端有但本地沒有的
-        Object.keys(S.statuses || {}).forEach(sid => {
-          merged[sid] = S.statuses[sid];
-        });
-      }
-      S.statuses = merged;
+    if (remote.statuses) {
+      const nextStatuses = {};
+      (S.students || []).forEach(s => {
+        nextStatuses[s.id] = remote.statuses[s.id] || {s:'available',iw:null,mw:null};
+      });
+      S.statuses = nextStatuses;
     }
     S.log   = remote.log   || S.log;
     S.anns  = remote.anns  || S.anns;
@@ -709,6 +701,28 @@ async function tryLogin(){
   if(!co){ errEl.textContent='廠商不存在，請確認管理端設定'; return; }
 
   btn.disabled = true;
+  errEl.textContent = '🔄 同步最新狀態…';
+
+  if(db && !fbRoom && S.students.length) fbRoom = computeRoomKey();
+  if(db && fbRoom){
+    try{
+      const snap = await db.ref(fbRoom + '/state').once('value');
+      const remote = snap.val();
+      if(remote && remote.ts){
+        if(remote.statuses){
+          const nextStatuses={};
+          (S.students||[]).forEach(s=>{nextStatuses[s.id]=remote.statuses[s.id]||{s:'available',iw:null,mw:null};});
+          S.statuses=nextStatuses;
+        }
+        S.log=remote.log||S.log;
+        S.anns=remote.anns||S.anns;
+        S.stage=remote.stage||S.stage;
+        S.ts=remote.ts;
+        localStorage.setItem(KEY, JSON.stringify(S));
+      }
+    }catch(e){}
+  }
+
   errEl.textContent = '🔒 驗證座位中…';
 
   // 嘗試取得座位鎖
@@ -824,6 +838,7 @@ function annContent(a){
     title:`${a.sid}號 ${sn?.name||''} 請前往 ${cn?.name||''} 面試`};
   if(a.type==='match')return{icon:'🎉',
     title:`媒合成功！${cn?.name||''} × ${a.sid}號 ${sn?.name||''}`};
+  if(a.type==='stage2')return{icon:'🚩', title:'第二階段面試開始，尚未媒合的同學請就位'};
   return null;
 }
 
@@ -985,17 +1000,19 @@ function refreshState(){
   if(db && fbRoom){
     db.ref(fbRoom + '/state').once('value').then(snap => {
       const remote = snap.val();
-      if(remote && remote.ts && remote.ts > (S.ts || 0)){
-        S.statuses = remote.statuses || S.statuses;
-        S.log      = remote.log      || S.log;
-        S.anns     = remote.anns     || S.anns;
-        S.stage    = remote.stage    || S.stage;
-        S.ts       = remote.ts;
+      if(remote && remote.ts){
+        if(remote.statuses){
+          const nextStatuses={};
+          (S.students||[]).forEach(s=>{nextStatuses[s.id]=remote.statuses[s.id]||{s:'available',iw:null,mw:null};});
+          S.statuses=nextStatuses;
+        }
+        S.log=remote.log||S.log;
+        S.anns=remote.anns||S.anns;
+        S.stage=remote.stage||S.stage;
+        S.ts=remote.ts;
         try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e) {}
-        applyRefresh();
-      } else {
-        applyRefresh();
       }
+      applyRefresh();
     }).catch(() => { load(); applyRefresh(); });
   } else {
     load();
