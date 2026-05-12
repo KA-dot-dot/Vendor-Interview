@@ -468,6 +468,7 @@ function fbStartListen() {
     S.log   = remote.log   || S.log;
     S.anns  = remote.anns  || S.anns;
     S.stage = remote.stage || S.stage;
+    if(remote.preSched) S.preSched = remote.preSched;
     S.ts    = remote.ts;
     try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e) {}
     if (ME) renderService();
@@ -511,6 +512,7 @@ function fbSaveState() {
     log:  (S.log  || []).slice(0, 60),
     anns: (S.anns || []).slice(-60),
     stage: S.stage || 1,
+    preSched: S.preSched || {},
     ts: Date.now()
   };
   db.ref(fbRoom + '/state').set(payload).catch(e => console.warn('fbSave error:', e));
@@ -1034,6 +1036,7 @@ function applyRemoteState(remote){
   S.log=remote.log||S.log;
   S.anns=remote.anns||S.anns;
   S.stage=remote.stage||S.stage;
+    if(remote.preSched) S.preSched=remote.preSched;
   S.ts=remote.ts;
   try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}
   return true;
