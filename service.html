@@ -395,7 +395,8 @@ if (!tabId) {
 }
 // deviceId：同一台設備所有分頁共用（localStorage）
 const deviceId = (() => { let d=localStorage.getItem('ims_device_id'); if(!d){d=Date.now()+'_'+Math.random().toString(36).slice(2,10);localStorage.setItem('ims_device_id',d);} return d; })();
-const STALE_LOCK_TIMEOUT = 45000; // 45秒無心跳視為過期（與 index.html 一致）
+const STALE_LOCK_TIMEOUT = 45000; // 45秒無心跳視為過期（與 index.html 一致)
+const LOCK_HEARTBEAT_MS = 5000;
 
 // ── Firebase 跨裝置即時同步 ────────────────────────────────────────
 const FIREBASE_CONFIG = (() => {
@@ -526,42 +527,46 @@ async function claimSeat(sid) {
 
   const lockRef = db.ref(fbRoom + '/sessions/' + sid);
   const now = Date.now();
+  const freshLock = extra => Object.assign({
+    sid, deviceId, tabId,
+    joinedAt: now,
+    lastSeen: now,
+    leaseExpiresAt: now + STALE_LOCK_TIMEOUT,
+    connected: true,
+    disconnected: false,
+    disconnectedAt: null
+  }, extra || {});
+  const isExpired = current => {
+    const expiresAt = Number(current.leaseExpiresAt || 0);
+    if (expiresAt && now >= expiresAt) return true;
+    const lastSeen = Number(current.lastSeen || current.joinedAt || 0);
+    return !lastSeen || now - lastSeen >= STALE_LOCK_TIMEOUT;
+  };
 
   const result = await lockRef.transaction(current => {
-    if (current === null) {
-      return { sid, deviceId, tabId, joinedAt: now, lastSeen: now, connected: true, disconnected: false };
-    }
-    if (current.tabId === tabId) {
-      return Object.assign({}, current, { lastSeen: now, connected: true, disconnected: false });
-    }
-    if (current.disconnected === true) {
-      return Object.assign({}, current, { deviceId, tabId, lastSeen: now, connected: true, disconnected: false, disconnectedAt: null });
-    }
-    if (current.deviceId === deviceId) {
-      return undefined;
-    }
-    const lastSeen = Number(current.lastSeen || current.joinedAt || 0);
-    if (lastSeen && now - lastSeen >= STALE_LOCK_TIMEOUT) {
-      return Object.assign({}, current, { deviceId, tabId, lastSeen: now, connected: true, disconnected: false, disconnectedAt: null });
-    }
+    if (current === null) return freshLock();
+    if (current.tabId === tabId) return freshLock({ joinedAt: current.joinedAt || now });
+    if (current.disconnected === true || current.connected === false || isExpired(current)) return freshLock();
+    if (current.deviceId === deviceId) return undefined;
     return undefined;
   });
 
   if (!result.committed) {
     const snap = await lockRef.once('value');
-    const val = snap.val();
-    if (val && val.deviceId === deviceId) {
-      return { ok: false, reason: '此座號已在同一裝置的其他分頁開啟，請關閉重複的分頁' };
+    const val = snap.val() || {};
+    const lastSeen = Number(val.lastSeen || val.joinedAt || 0);
+    const remain = Math.max(1, Math.ceil((STALE_LOCK_TIMEOUT - (Date.now() - lastSeen)) / 1000));
+    if (val.deviceId === deviceId) {
+      return { ok: false, reason: `此座號已在同一裝置的其他分頁開啟，請關閉重複分頁或等約 ${remain} 秒後再試` };
     }
-    return { ok: false, reason: '此座號已被另一裝置登入，請等對方關閉後再試' };
+    return { ok: false, reason: `此座號已被另一裝置登入，請等對方關閉或約 ${remain} 秒後再試` };
   }
 
   seatRef = lockRef;
-  lockRef.onDisconnect().update({ connected: false, disconnected: true, disconnectedAt: firebase.database.ServerValue.TIMESTAMP });
+  lockRef.onDisconnect().update({ connected: false, disconnected: true, disconnectedAt: firebase.database.ServerValue.TIMESTAMP, leaseExpiresAt: firebase.database.ServerValue.TIMESTAMP });
   startSeatHeartbeat();
   return { ok: true };
 }
-
 async function releaseSeat(sid) {
   stopSeatHeartbeat();
   // 取消 onDisconnect
@@ -574,7 +579,7 @@ async function releaseSeat(sid) {
       const val = snap.val();
       // 只要是同裝置就標記 disconnected，讓下一個登入可立即接手
       if (val && (val.tabId === tabId || val.deviceId === deviceId)) {
-        await lockRef.update({ connected: false, disconnected: true, disconnectedAt: Date.now() });
+        await lockRef.update({ connected: false, disconnected: true, disconnectedAt: Date.now(), leaseExpiresAt: Date.now() });
       }
     } catch(e) {}
   }
@@ -584,10 +589,10 @@ async function releaseSeat(sid) {
 function startSeatHeartbeat() {
   stopSeatHeartbeat();
   const ping = () => {
-    if (seatRef) seatRef.update({ lastSeen: Date.now(), connected: true }).catch(() => {});
+    if (seatRef) { const now=Date.now(); seatRef.update({ lastSeen: now, leaseExpiresAt: now + STALE_LOCK_TIMEOUT, connected: true, disconnected: false }).catch(() => {}); }
   };
   ping();
-  seatHeartbeatTimer = setInterval(ping, 5000);
+  seatHeartbeatTimer = setInterval(ping, LOCK_HEARTBEAT_MS);
 }
 function stopSeatHeartbeat() {
   if (seatHeartbeatTimer) { clearInterval(seatHeartbeatTimer); seatHeartbeatTimer = null; }
@@ -1098,6 +1103,9 @@ if(S.companies.length){
 }
 // 頁面關閉/重整時自動釋放座位鎖
 window.addEventListener('beforeunload', () => {
+  if(ME) releaseSeat(ME.id);
+});
+window.addEventListener('pagehide', () => {
   if(ME) releaseSeat(ME.id);
 });
 </script>
