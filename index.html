@@ -448,9 +448,9 @@ function initFirebase() {
 
 // ─── Room key：從學生+廠商列表產生穩定的 hash，確保同一場媒合用同一個 room ──
 function computeRoomKey() {
-  const raw = (S.roomId || '') + '|'
-            + (S.students || []).map(s => s.id).join(',')
+  const listKey = (S.students || []).map(s => s.id).join(',')
             + '|' + (S.companies || []).map(c => c.id).join(',');
+  const raw = S.roomId ? (S.roomId + '|' + listKey) : listKey;
   let h = 5381;
   for (let i = 0; i < raw.length; i++) { h = ((h << 5) + h) ^ raw.charCodeAt(i); h >>>= 0; }
   return 'ims_' + h.toString(16).padStart(8, '0');
@@ -708,18 +708,7 @@ async function tryLogin(){
     try{
       const snap = await db.ref(fbRoom + '/state').once('value');
       const remote = snap.val();
-      if(remote && remote.ts){
-        if(remote.statuses){
-          const nextStatuses={};
-          (S.students||[]).forEach(s=>{nextStatuses[s.id]=remote.statuses[s.id]||{s:'available',iw:null,mw:null};});
-          S.statuses=nextStatuses;
-        }
-        S.log=remote.log||S.log;
-        S.anns=remote.anns||S.anns;
-        S.stage=remote.stage||S.stage;
-        S.ts=remote.ts;
-        localStorage.setItem(KEY, JSON.stringify(S));
-      }
+      applyRemoteState(remote)
     }catch(e){}
   }
 
@@ -1000,18 +989,7 @@ function refreshState(){
   if(db && fbRoom){
     db.ref(fbRoom + '/state').once('value').then(snap => {
       const remote = snap.val();
-      if(remote && remote.ts){
-        if(remote.statuses){
-          const nextStatuses={};
-          (S.students||[]).forEach(s=>{nextStatuses[s.id]=remote.statuses[s.id]||{s:'available',iw:null,mw:null};});
-          S.statuses=nextStatuses;
-        }
-        S.log=remote.log||S.log;
-        S.anns=remote.anns||S.anns;
-        S.stage=remote.stage||S.stage;
-        S.ts=remote.ts;
-        try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e) {}
-      }
+      applyRemoteState(remote)
       applyRefresh();
     }).catch(() => { load(); applyRefresh(); });
   } else {
@@ -1059,7 +1037,7 @@ setInterval(()=>{
   try{
     const raw=localStorage.getItem(KEY);if(!raw)return;
     const p=JSON.parse(raw);
-    if(p.ts>lastTs){lastTs=p.ts;S=p;if(ME)renderService();processAnns();}
+    if(p.ts>lastTs && p.ts>(S.ts||0)){lastTs=p.ts;S=p;if(ME)renderService();processAnns();}
   }catch{}
 },2000);
 
@@ -1080,6 +1058,20 @@ function toggleTheme(){
 // ══════════════════════════════════════════════════
 
 // ── 共用：把 payload 寫入 localStorage 並初始化頁面 ───────────────
+function applyRemoteState(remote){
+  if(!remote||!remote.ts)return false;
+  if(remote.statuses){
+    const nextStatuses={};
+    (S.students||[]).forEach(s=>{nextStatuses[s.id]=remote.statuses[s.id]||{s:'available',iw:null,mw:null};});
+    S.statuses=nextStatuses;
+  }
+  S.log=remote.log||S.log;
+  S.anns=remote.anns||S.anns;
+  S.stage=remote.stage||S.stage;
+  S.ts=remote.ts;
+  try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}
+  return true;
+}
 function applyPayload(payload){
   if(!payload||!Array.isArray(payload.students)||!Array.isArray(payload.companies))return false;
   load();
@@ -1096,7 +1088,7 @@ function applyPayload(payload){
   S.statuses=newSt;
   S.log=[];S.anns=[];
   // 設一個很舊的 ts，讓 Firebase listener 可以用最新資料覆蓋
-  S.ts=1;
+  S.ts=0;
   try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){return false;}
   if(db){ fbRoom=computeRoomKey(); fbStartListen(); }
   const sel=document.getElementById('loginCo');
