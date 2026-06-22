@@ -281,7 +281,6 @@ html[data-dark="1"] .leg-dot{
 </style>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako_inflate.min.js"></script>
 </head>
 <body>
 
@@ -468,7 +467,6 @@ function fbStartListen() {
     S.log   = remote.log   || S.log;
     S.anns  = remote.anns  || S.anns;
     S.stage = remote.stage || S.stage;
-    if(remote.preSched) S.preSched = remote.preSched;
     S.ts    = remote.ts;
     try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e) {}
     if (ME) renderService();
@@ -512,7 +510,6 @@ function fbSaveState() {
     log:  (S.log  || []).slice(0, 60),
     anns: (S.anns || []).slice(-60),
     stage: S.stage || 1,
-    preSched: S.preSched || {},
     ts: Date.now()
   };
   db.ref(fbRoom + '/state').set(payload).catch(e => console.warn('fbSave error:', e));
@@ -1036,7 +1033,6 @@ function applyRemoteState(remote){
   S.log=remote.log||S.log;
   S.anns=remote.anns||S.anns;
   S.stage=remote.stage||S.stage;
-    if(remote.preSched) S.preSched=remote.preSched;
   S.ts=remote.ts;
   try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}
   return true;
@@ -1070,39 +1066,6 @@ function applyPayload(payload){
 
 (function detectRoomImport(){
   const params=new URLSearchParams(location.search);
-
-  // ── 模式A：?d=BASE64URL_DEFLATE（pako deflateRaw 壓縮）──
-  const dParam=params.get('d');
-  if(dParam){
-    history.replaceState(null,'',location.pathname);
-    try{
-      // Base64url → binary
-      const b64  = dParam.replace(/-/g,'+').replace(/_/g,'/');
-      const pad  = b64.length%4 ? b64+'='.repeat(4-b64.length%4) : b64;
-      const bin  = atob(pad);
-      const bytes = new Uint8Array(bin.length);
-      for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
-      // pako inflateRaw → JSON string
-      const json = pako.inflateRaw(bytes, {to:'string'});
-      applyPayload(JSON.parse(json));
-    }catch(e){ console.warn('d param parse error',e); }
-    return;
-  }
-  }
-
-  // ── 模式B：?data=BASE64（舊版未壓縮，向下相容）──
-  const dataParam=params.get('data');
-  if(dataParam){
-    history.replaceState(null,'',location.pathname);
-    try{
-      const json=decodeURIComponent(escape(atob(decodeURIComponent(dataParam))));
-      const payload=JSON.parse(json);
-      applyPayload(payload);
-    }catch(e){ console.warn('data param parse error',e); }
-    return;
-  }
-
-  // ── 模式C：?room=KEY（舊版 Firebase，向下相容）──
   const roomKey=params.get('room');
   if(!roomKey)return;
   history.replaceState(null,'',location.pathname);
@@ -1111,20 +1074,14 @@ function applyPayload(payload){
       if(retries>0) setTimeout(()=>tryFetch(retries-1),400);
       return;
     }
-    // 新格式 fbRoom key（ims_開頭）→ fbRoom/init
-    if(roomKey.startsWith('ims_')){
-      db.ref(roomKey+'/init').once('value').then(snap=>{
-        const val=snap.val();
-        if(val&&val.payload){ try{ applyPayload(JSON.parse(val.payload)); }catch(e){} }
-      }).catch(()=>{});
-    } else {
-      // 舊格式 → ims_qr_init/KEY
-      db.ref('ims_qr_init/'+roomKey).once('value').then(snap=>{
-        const val=snap.val();
-        if(!val||!val.payload)return;
-        try{ applyPayload(JSON.parse(val.payload)); }catch(e){}
-      }).catch(()=>{});
-    }
+    db.ref('ims_qr_init/'+roomKey).once('value').then(snap=>{
+      const val=snap.val();
+      if(!val||!val.payload){ console.warn('room key not found:',roomKey); return; }
+      try{
+        const payload=JSON.parse(val.payload);
+        applyPayload(payload);
+      }catch(e){ console.warn('room payload parse error',e); }
+    }).catch(e=>{ console.warn('firebase room fetch error',e); });
   }
   setTimeout(()=>tryFetch(5), 200);
 })();
