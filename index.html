@@ -1070,7 +1070,7 @@ function applyPayload(payload){
 (function detectRoomImport(){
   const params=new URLSearchParams(location.search);
 
-  // ── 新模式：?data=BASE64  （本地解碼，不需要 Firebase 寫入）──
+  // ── 模式A：?data=BASE64（本地解碼，備用）──
   const dataParam=params.get('data');
   if(dataParam){
     history.replaceState(null,'',location.pathname);
@@ -1082,23 +1082,44 @@ function applyPayload(payload){
     return;
   }
 
-  // ── 舊模式：?room=KEY  （從 Firebase 讀取，保留相容性）──
+  // ── 模式B：?room=KEY（從 Firebase 讀取）──
+  // KEY 可能是新格式 ims_xxxxxxxx（fbRoom hash），從 KEY/init 讀
+  // 也可能是舊格式短碼，從 ims_qr_init/KEY 讀（向下相容）
   const roomKey=params.get('room');
   if(!roomKey)return;
   history.replaceState(null,'',location.pathname);
+
   function tryFetch(retries){
     if(!db){
       if(retries>0) setTimeout(()=>tryFetch(retries-1),400);
       return;
     }
-    db.ref('ims_qr_init/'+roomKey).once('value').then(snap=>{
-      const val=snap.val();
-      if(!val||!val.payload){ console.warn('room key not found:',roomKey); return; }
-      try{
-        const payload=JSON.parse(val.payload);
-        applyPayload(payload);
-      }catch(e){ console.warn('room payload parse error',e); }
-    }).catch(e=>{ console.warn('firebase room fetch error',e); });
+    // 新格式：fbRoom key 以 "ims_" 開頭，payload 存在 KEY/init
+    if(roomKey.startsWith('ims_')){
+      db.ref(roomKey+'/init').once('value').then(snap=>{
+        const val=snap.val();
+        if(val&&val.payload){
+          try{ applyPayload(JSON.parse(val.payload)); }
+          catch(e){ console.warn('init payload parse error',e); }
+        } else {
+          // init 可能已被清除，嘗試從 state 直接取 preSched / students（有 Firebase listener 會同步）
+          console.warn('init not found for room:',roomKey,'; relying on state listener');
+          // 還是嘗試舊路徑兜底
+          db.ref('ims_qr_init/'+roomKey).once('value').then(s2=>{
+            const v2=s2.val();
+            if(v2&&v2.payload){ try{ applyPayload(JSON.parse(v2.payload)); }catch{} }
+          }).catch(()=>{});
+        }
+      }).catch(e=>{ console.warn('firebase init fetch error',e); });
+    } else {
+      // 舊格式：從 ims_qr_init/KEY 讀
+      db.ref('ims_qr_init/'+roomKey).once('value').then(snap=>{
+        const val=snap.val();
+        if(!val||!val.payload){ console.warn('room key not found:',roomKey); return; }
+        try{ applyPayload(JSON.parse(val.payload)); }
+        catch(e){ console.warn('room payload parse error',e); }
+      }).catch(e=>{ console.warn('firebase room fetch error',e); });
+    }
   }
   setTimeout(()=>tryFetch(5), 200);
 })();
