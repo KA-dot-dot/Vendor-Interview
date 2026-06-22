@@ -1789,20 +1789,32 @@ async function genShareLink(){
     const json  = JSON.stringify(payload);
     const bytes = new TextEncoder().encode(json);
     // CompressionStream: Chrome 80+, Firefox 113+, Safari 16.4+
-    const cs    = new CompressionStream('deflate-raw');
+    const cs     = new CompressionStream('deflate-raw');
     const writer = cs.writable.getWriter();
     writer.write(bytes);
     writer.close();
-    const compressed = await new Response(cs.readable).arrayBuffer();
-    // Base64url（不需 encodeURIComponent，URL 最短）
-    const b64 = btoa(String.fromCharCode(...new Uint8Array(compressed)));
+    const buf = await new Response(cs.readable).arrayBuffer();
+    const compressed = new Uint8Array(buf);
+    // 用 chunk loop 轉 Base64，避免大資料時 spread operator 造成 stack overflow
+    let b64 = '';
+    const CHUNK = 8192;
+    for(let i = 0; i < compressed.length; i += CHUNK){
+      b64 += String.fromCharCode(...compressed.subarray(i, i + CHUNK));
+    }
+    b64 = btoa(b64);
     dataParam = b64.replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
   } catch(e) {
-    // fallback：直接 Base64（不壓縮），QR Code 可能較密但仍可用
+    // fallback：直接 Base64（不壓縮）
     try {
-      const json = JSON.stringify(payload);
-      const b64  = btoa(unescape(encodeURIComponent(json)));
-      dataParam  = b64.replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+      const json  = JSON.stringify(payload);
+      const bytes = new TextEncoder().encode(json);
+      let b64 = '';
+      const CHUNK = 8192;
+      for(let i = 0; i < bytes.length; i += CHUNK){
+        b64 += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+      }
+      b64 = btoa(b64);
+      dataParam = 'R' + b64.replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,''); // R prefix = raw (no compress)
       statusEl.textContent = '⚠️ 壓縮不支援，使用標準模式';
     } catch(e2) {
       statusEl.textContent = '❌ 產生失敗：' + e2.message;

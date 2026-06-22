@@ -1076,26 +1076,29 @@ function applyPayload(payload){
     history.replaceState(null,'',location.pathname);
     (async()=>{
       try{
-        // Base64url → Base64 標準
+        // R prefix = raw（未壓縮 fallback）
+        if(dParam.startsWith('R')){
+          const b64 = dParam.slice(1).replace(/-/g,'+').replace(/_/g,'/');
+          const pad = b64.length%4 ? b64+'='.repeat(4-b64.length%4) : b64;
+          const bin = atob(pad);
+          const bytes = new Uint8Array(bin.length);
+          for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+          const json = new TextDecoder().decode(bytes);
+          applyPayload(JSON.parse(json));
+          return;
+        }
+        // 壓縮版：Base64url → 解壓縮
         const b64 = dParam.replace(/-/g,'+').replace(/_/g,'/');
         const pad = b64.length%4 ? b64+'='.repeat(4-b64.length%4) : b64;
         const bin = atob(pad);
         const bytes = new Uint8Array(bin.length);
         for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
-        let json;
-        try{
-          // 嘗試解壓縮（deflate-raw）
-          const ds = new DecompressionStream('deflate-raw');
-          const writer = ds.writable.getWriter();
-          writer.write(bytes); writer.close();
-          const buf = await new Response(ds.readable).arrayBuffer();
-          json = new TextDecoder().decode(buf);
-        }catch(e){
-          // fallback：直接當 Base64 UTF-8（未壓縮）
-          json = decodeURIComponent(escape(atob(pad)));
-        }
-        const payload=JSON.parse(json);
-        applyPayload(payload);
+        const ds = new DecompressionStream('deflate-raw');
+        const writer = ds.writable.getWriter();
+        writer.write(bytes); writer.close();
+        const buf = await new Response(ds.readable).arrayBuffer();
+        const json = new TextDecoder().decode(buf);
+        applyPayload(JSON.parse(json));
       }catch(e){ console.warn('d param parse error',e); }
     })();
     return;
