@@ -1778,34 +1778,49 @@ async function genShareLink(){
   const urlBox   = document.getElementById('shareUrlBox');
   const infoEl   = document.getElementById('shareInfo');
 
-  statusEl.textContent = '⏳ 正在上傳資料到雲端…';
+  statusEl.textContent = '⏳ 正在產生連結…';
   urlBox.style.display = 'none';
   qrWrap.innerHTML = '<span style="font-size:12px;color:var(--muted)">產生中…</span>';
 
-  if(!db){ toast('Firebase 連線失敗，請檢查網路','err'); return; }
+  // ── 壓縮 payload → Base64url，完全不依賴 Firebase 寫入 ──
+  // 使用瀏覽器內建 CompressionStream (deflate-raw)，無需外部套件
+  let dataParam;
+  try {
+    const json  = JSON.stringify(payload);
+    const bytes = new TextEncoder().encode(json);
+    // CompressionStream: Chrome 80+, Firefox 113+, Safari 16.4+
+    const cs    = new CompressionStream('deflate-raw');
+    const writer = cs.writable.getWriter();
+    writer.write(bytes);
+    writer.close();
+    const compressed = await new Response(cs.readable).arrayBuffer();
+    // Base64url（不需 encodeURIComponent，URL 最短）
+    const b64 = btoa(String.fromCharCode(...new Uint8Array(compressed)));
+    dataParam = b64.replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+  } catch(e) {
+    // fallback：直接 Base64（不壓縮），QR Code 可能較密但仍可用
+    try {
+      const json = JSON.stringify(payload);
+      const b64  = btoa(unescape(encodeURIComponent(json)));
+      dataParam  = b64.replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+      statusEl.textContent = '⚠️ 壓縮不支援，使用標準模式';
+    } catch(e2) {
+      statusEl.textContent = '❌ 產生失敗：' + e2.message;
+      toast('產生失敗','err'); return;
+    }
+  }
 
-  // ── 將 payload 寫入 fbRoom/init（與 state 同層，享有相同寫入權限）──
-  // URL 只帶短 room key，index.html 掃到後從 fbRoom/init 讀取 payload
-  try{
-    await db.ref(fbRoom + '/init').set({ payload: JSON.stringify(payload), ts: Date.now() });
-    await db.ref(fbRoom + '/state').set({
-      statuses: S.statuses || {},
-      log: [], anns: [], stage: S.stage || 1, ts: Date.now()
-    });
-    fbStartListen();
-    // 24 小時後自動清除 init（避免佔用空間）
-    setTimeout(()=>{ try{ db.ref(fbRoom + '/init').remove(); }catch{} }, 86400000);
-  }catch(e){
-    statusEl.innerHTML = '❌ 雲端上傳失敗：' + e.message
-      + '<br><span style="color:#744210;font-size:11px">⚠️ 請至 Firebase Console → Realtime Database → Rules，將 read/write 設為 <code>true</code> 後重試</span>';
-    toast('上傳失敗','err');
-    return;
+  // 嘗試同步 Firebase state（讓面試即時同步用），失敗不影響 QR Code
+  if(db && fbRoom){
+    db.ref(fbRoom + '/state').set({
+      statuses: S.statuses||{}, log:[], anns:[], stage: S.stage||1, ts: Date.now()
+    }).then(()=>fbStartListen()).catch(()=>fbStartListen());
   }
 
   const base     = location.origin + location.pathname.replace(/[^/]*$/, '');
-  const finalUrl = base + 'index.html?room=' + fbRoom;
+  const finalUrl = base + 'index.html?d=' + dataParam;
 
-  statusEl.textContent = '✅ 雲端連結產生成功！QR Code 清晰易掃';
+  statusEl.textContent = '✅ 連結產生成功！掃描 QR Code 即可進入服務台';
 
   const sz = 180;
   qrWrap.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=${sz}x${sz}&data=${encodeURIComponent(finalUrl)}&ecc=M&margin=2"

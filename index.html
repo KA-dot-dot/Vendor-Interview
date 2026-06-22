@@ -1070,7 +1070,38 @@ function applyPayload(payload){
 (function detectRoomImport(){
   const params=new URLSearchParams(location.search);
 
-  // ── 模式A：?data=BASE64（本地解碼，備用）──
+  // ── 模式A：?d=BASE64URL_DEFLATE（壓縮版，新格式）──
+  const dParam=params.get('d');
+  if(dParam){
+    history.replaceState(null,'',location.pathname);
+    (async()=>{
+      try{
+        // Base64url → Base64 標準
+        const b64 = dParam.replace(/-/g,'+').replace(/_/g,'/');
+        const pad = b64.length%4 ? b64+'='.repeat(4-b64.length%4) : b64;
+        const bin = atob(pad);
+        const bytes = new Uint8Array(bin.length);
+        for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+        let json;
+        try{
+          // 嘗試解壓縮（deflate-raw）
+          const ds = new DecompressionStream('deflate-raw');
+          const writer = ds.writable.getWriter();
+          writer.write(bytes); writer.close();
+          const buf = await new Response(ds.readable).arrayBuffer();
+          json = new TextDecoder().decode(buf);
+        }catch(e){
+          // fallback：直接當 Base64 UTF-8（未壓縮）
+          json = decodeURIComponent(escape(atob(pad)));
+        }
+        const payload=JSON.parse(json);
+        applyPayload(payload);
+      }catch(e){ console.warn('d param parse error',e); }
+    })();
+    return;
+  }
+
+  // ── 模式B：?data=BASE64（舊版未壓縮，向下相容）──
   const dataParam=params.get('data');
   if(dataParam){
     history.replaceState(null,'',location.pathname);
@@ -1082,43 +1113,28 @@ function applyPayload(payload){
     return;
   }
 
-  // ── 模式B：?room=KEY（從 Firebase 讀取）──
-  // KEY 可能是新格式 ims_xxxxxxxx（fbRoom hash），從 KEY/init 讀
-  // 也可能是舊格式短碼，從 ims_qr_init/KEY 讀（向下相容）
+  // ── 模式C：?room=KEY（舊版 Firebase，向下相容）──
   const roomKey=params.get('room');
   if(!roomKey)return;
   history.replaceState(null,'',location.pathname);
-
   function tryFetch(retries){
     if(!db){
       if(retries>0) setTimeout(()=>tryFetch(retries-1),400);
       return;
     }
-    // 新格式：fbRoom key 以 "ims_" 開頭，payload 存在 KEY/init
+    // 新格式 fbRoom key（ims_開頭）→ fbRoom/init
     if(roomKey.startsWith('ims_')){
       db.ref(roomKey+'/init').once('value').then(snap=>{
         const val=snap.val();
-        if(val&&val.payload){
-          try{ applyPayload(JSON.parse(val.payload)); }
-          catch(e){ console.warn('init payload parse error',e); }
-        } else {
-          // init 可能已被清除，嘗試從 state 直接取 preSched / students（有 Firebase listener 會同步）
-          console.warn('init not found for room:',roomKey,'; relying on state listener');
-          // 還是嘗試舊路徑兜底
-          db.ref('ims_qr_init/'+roomKey).once('value').then(s2=>{
-            const v2=s2.val();
-            if(v2&&v2.payload){ try{ applyPayload(JSON.parse(v2.payload)); }catch{} }
-          }).catch(()=>{});
-        }
-      }).catch(e=>{ console.warn('firebase init fetch error',e); });
+        if(val&&val.payload){ try{ applyPayload(JSON.parse(val.payload)); }catch(e){} }
+      }).catch(()=>{});
     } else {
-      // 舊格式：從 ims_qr_init/KEY 讀
+      // 舊格式 → ims_qr_init/KEY
       db.ref('ims_qr_init/'+roomKey).once('value').then(snap=>{
         const val=snap.val();
-        if(!val||!val.payload){ console.warn('room key not found:',roomKey); return; }
-        try{ applyPayload(JSON.parse(val.payload)); }
-        catch(e){ console.warn('room payload parse error',e); }
-      }).catch(e=>{ console.warn('firebase room fetch error',e); });
+        if(!val||!val.payload)return;
+        try{ applyPayload(JSON.parse(val.payload)); }catch(e){}
+      }).catch(()=>{});
     }
   }
   setTimeout(()=>tryFetch(5), 200);
