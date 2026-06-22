@@ -1,5 +1,4 @@
-
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
@@ -1070,6 +1069,20 @@ function applyPayload(payload){
 
 (function detectRoomImport(){
   const params=new URLSearchParams(location.search);
+
+  // ── 新模式：?data=BASE64  （本地解碼，不需要 Firebase 寫入）──
+  const dataParam=params.get('data');
+  if(dataParam){
+    history.replaceState(null,'',location.pathname);
+    try{
+      const json=decodeURIComponent(escape(atob(decodeURIComponent(dataParam))));
+      const payload=JSON.parse(json);
+      applyPayload(payload);
+    }catch(e){ console.warn('data param parse error',e); }
+    return;
+  }
+
+  // ── 舊模式：?room=KEY  （從 Firebase 讀取，保留相容性）──
   const roomKey=params.get('room');
   if(!roomKey)return;
   history.replaceState(null,'',location.pathname);
