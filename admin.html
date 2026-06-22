@@ -591,6 +591,7 @@ html[data-dark="1"] .smod-url{background:#0f172a;color:#93c5fd}
       <div class="stage-num" id="mgmtStage">第 1 階段</div>
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-success btn-lg" onclick="exportMatchExcel()">📊 匯出媒合 Excel</button>
       <button class="btn btn-warn btn-lg" id="advBtn" onclick="advanceStage()">🚩 進入第二階段</button>
       <button class="btn btn-lg" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.45)" onclick="resetAll()">🔄 重置系統</button>
     </div>
@@ -771,9 +772,10 @@ function initFirebase() {
 }
 
 function computeRoomKey() {
+  if (S.roomId) return 'ims_' + String(S.roomId).replace(/[^a-z0-9_-]/gi, '');
   const listKey = (S.students || []).map(s => s.id).join(',')
             + '|' + (S.companies || []).map(c => c.id).join(',');
-  const raw = S.roomId ? (S.roomId + '|' + listKey) : listKey;
+  const raw = listKey;
   let h = 5381;
   for (let i = 0; i < raw.length; i++) { h = ((h << 5) + h) ^ raw.charCodeAt(i); h >>>= 0; }
   return 'ims_' + h.toString(16).padStart(8, '0');
@@ -831,11 +833,15 @@ function fbSaveState() {
   if (!fbRoom && S.students.length) fbRoom = computeRoomKey();
   if (!fbRoom) return;
   const payload = {
+    roomId: S.roomId || null,
+    students: S.students || [],
+    companies: S.companies || [],
     statuses: S.statuses || {},
     log:  (S.log  || []).slice(0, 60),
     anns: (S.anns || []).slice(-60),
     stage: S.stage || 1,
     preSched: S.preSched || {},
+    cfg: S.cfg || {},
     ts: Date.now()
   };
   db.ref(fbRoom + '/state').set(payload).catch(e => console.warn('fbSave error:', e));
@@ -1396,6 +1402,42 @@ function adminCancelMatch(sid){
   if(!r.ok)toast(r.msg,'err');else toast('已取消媒合，學生可重新面試','ok');
   renderAll();
 }
+
+function excelCell(v){
+  return String(v ?? '').replace(/[&<>"']/g,m=>({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[m]));
+}
+function exportMatchExcel(){
+  const today=new Date();
+  const dateStr=[
+    today.getFullYear(),
+    String(today.getMonth()+1).padStart(2,'0'),
+    String(today.getDate()).padStart(2,'0')
+  ].join('-');
+  const matched=S.students
+    .map(s=>({student:s, status:sts(s.id)}))
+    .filter(x=>x.status.s==='matched'&&x.status.mw)
+    .sort((a,b)=>a.student.id.localeCompare(b.student.id,undefined,{numeric:true}));
+  const rows=matched.length
+    ? matched.map((x,i)=>`<tr><td>${i+1}</td><td style="mso-number-format:'\\@'">${excelCell(x.student.id)}</td><td>${excelCell(x.student.name)}</td><td>${excelCell(coName(x.status.mw))}</td></tr>`).join('')
+    : `<tr><td colspan="4">當天未媒合成功</td></tr>`;
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>
+    <table border="1">
+      <tr><th colspan="4">媒合成功名單（${excelCell(dateStr)}，以最後媒合狀態為準）</th></tr>
+      <tr><th>序號</th><th>座號</th><th>學生</th><th>媒合成功廠商</th></tr>
+      ${rows}
+    </table>
+  </body></html>`;
+  const blob=new Blob(['\ufeff',html],{type:'application/vnd.ms-excel;charset=utf-8'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`媒合成功名單_${dateStr}.xls`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},0);
+  toast(matched.length?`已匯出 ${matched.length} 筆最後媒合結果`:'當天未媒合成功','ok');
+}
 // ══════════════════════════════════════════════════
 //  RENDER
 // ══════════════════════════════════════════════════
@@ -1776,17 +1818,19 @@ async function genShareLink(){
   const urlBox   = document.getElementById('shareUrlBox');
   const infoEl   = document.getElementById('shareInfo');
 
-  statusEl.textContent = '⏳ 正在上傳資料到雲端…';
+  statusEl.textContent = '⏳ 正在建立短網址資料…';
   urlBox.style.display = 'none';
   qrWrap.innerHTML = '<span style="font-size:12px;color:var(--muted)">產生中…</span>';
-
-  const roomPath = 'ims_qr_init/' + key;
 
   if(!db){ toast('Firebase 連線失敗，請檢查網路','err'); return; }
 
   try{
-    await db.ref(roomPath).set({ payload: JSON.stringify(payload), ts: Date.now() });
     await db.ref(fbRoom + '/state').set({
+      roomId: S.roomId,
+      students: S.students || [],
+      companies: S.companies || [],
+      preSched: S.preSched || {},
+      cfg: payload.cfg,
       statuses: S.statuses || {},
       log: [],
       anns: [],
@@ -1794,17 +1838,16 @@ async function genShareLink(){
       ts: Date.now()
     });
     fbStartListen();
-    setTimeout(()=>{ try{ db.ref(roomPath).remove(); }catch{} }, 86400000);
   }catch(e){
-    statusEl.textContent = '❌ 雲端上傳失敗：' + e.message;
+    statusEl.textContent = '❌ 短網址資料建立失敗：' + e.message;
     toast('上傳失敗','err');
     return;
   }
 
   const base     = location.origin + location.pathname.replace(/[^/]*$/, '');
-  const finalUrl = base + 'index.html?room=' + key;
+  const finalUrl = base + '?room=' + key;
 
-  statusEl.textContent = '✅ 雲端連結產生成功！QR Code 清晰易掃';
+  statusEl.textContent = '✅ 短網址產生成功！QR Code 清晰易掃';
 
   const sz = 180;
   qrWrap.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=${sz}x${sz}&data=${encodeURIComponent(finalUrl)}&ecc=M&margin=2"

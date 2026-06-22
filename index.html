@@ -426,9 +426,10 @@ function initFirebase() {
 
 // 從學生+廠商 id 產生穩定的 room key（與管理端/index.html 相同演算法）
 function computeRoomKey() {
+  if (S.roomId) return 'ims_' + String(S.roomId).replace(/[^a-z0-9_-]/gi, '');
   const listKey = (S.students || []).map(s => s.id).join(',')
             + '|' + (S.companies || []).map(c => c.id).join(',');
-  const raw = S.roomId ? (S.roomId + '|' + listKey) : listKey;
+  const raw = listKey;
   let h = 5381;
   for (let i = 0; i < raw.length; i++) { h = ((h << 5) + h) ^ raw.charCodeAt(i); h >>>= 0; }
   return 'ims_' + h.toString(16).padStart(8, '0');
@@ -507,11 +508,15 @@ function fbSaveState() {
   if (!fbRoom && S.students.length) fbRoom = computeRoomKey();
   if (!fbRoom) return;
   const payload = {
+    roomId: S.roomId || null,
+    students: S.students || [],
+    companies: S.companies || [],
     statuses: S.statuses || {},
     log:  (S.log  || []).slice(0, 60),
     anns: (S.anns || []).slice(-60),
     stage: S.stage || 1,
     preSched: S.preSched || {},
+    cfg: S.cfg || {},
     ts: Date.now()
   };
   db.ref(fbRoom + '/state').set(payload).catch(e => console.warn('fbSave error:', e));
@@ -1072,16 +1077,17 @@ function applyPayload(payload){
   const roomKey=params.get('room');
   if(!roomKey)return;
   history.replaceState(null,'',location.pathname);
+  const roomPath='ims_'+String(roomKey).replace(/[^a-z0-9_-]/gi,'');
   function tryFetch(retries){
     if(!db){
       if(retries>0) setTimeout(()=>tryFetch(retries-1),400);
       return;
     }
-    db.ref('ims_qr_init/'+roomKey).once('value').then(snap=>{
+    db.ref(roomPath+'/state').once('value').then(snap=>{
       const val=snap.val();
-      if(!val||!val.payload){ console.warn('room key not found:',roomKey); return; }
+      if(!val){ console.warn('room key not found:',roomKey); return; }
       try{
-        const payload=JSON.parse(val.payload);
+        const payload=val.payload?JSON.parse(val.payload):val;
         applyPayload(payload);
       }catch(e){ console.warn('room payload parse error',e); }
     }).catch(e=>{ console.warn('firebase room fetch error',e); });
