@@ -281,6 +281,7 @@ html[data-dark="1"] .leg-dot{
 </style>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako_inflate.min.js"></script>
 </head>
 <body>
 
@@ -1070,38 +1071,23 @@ function applyPayload(payload){
 (function detectRoomImport(){
   const params=new URLSearchParams(location.search);
 
-  // ── 模式A：?d=BASE64URL_DEFLATE（壓縮版，新格式）──
+  // ── 模式A：?d=BASE64URL_DEFLATE（pako deflateRaw 壓縮）──
   const dParam=params.get('d');
   if(dParam){
     history.replaceState(null,'',location.pathname);
-    (async()=>{
-      try{
-        // R prefix = raw（未壓縮 fallback）
-        if(dParam.startsWith('R')){
-          const b64 = dParam.slice(1).replace(/-/g,'+').replace(/_/g,'/');
-          const pad = b64.length%4 ? b64+'='.repeat(4-b64.length%4) : b64;
-          const bin = atob(pad);
-          const bytes = new Uint8Array(bin.length);
-          for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
-          const json = new TextDecoder().decode(bytes);
-          applyPayload(JSON.parse(json));
-          return;
-        }
-        // 壓縮版：Base64url → 解壓縮
-        const b64 = dParam.replace(/-/g,'+').replace(/_/g,'/');
-        const pad = b64.length%4 ? b64+'='.repeat(4-b64.length%4) : b64;
-        const bin = atob(pad);
-        const bytes = new Uint8Array(bin.length);
-        for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
-        const ds = new DecompressionStream('deflate-raw');
-        const writer = ds.writable.getWriter();
-        writer.write(bytes); writer.close();
-        const buf = await new Response(ds.readable).arrayBuffer();
-        const json = new TextDecoder().decode(buf);
-        applyPayload(JSON.parse(json));
-      }catch(e){ console.warn('d param parse error',e); }
-    })();
+    try{
+      // Base64url → binary
+      const b64  = dParam.replace(/-/g,'+').replace(/_/g,'/');
+      const pad  = b64.length%4 ? b64+'='.repeat(4-b64.length%4) : b64;
+      const bin  = atob(pad);
+      const bytes = new Uint8Array(bin.length);
+      for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+      // pako inflateRaw → JSON string
+      const json = pako.inflateRaw(bytes, {to:'string'});
+      applyPayload(JSON.parse(json));
+    }catch(e){ console.warn('d param parse error',e); }
     return;
+  }
   }
 
   // ── 模式B：?data=BASE64（舊版未壓縮，向下相容）──

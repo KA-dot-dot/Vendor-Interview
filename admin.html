@@ -465,6 +465,7 @@ html[data-dark="1"] .smod-url{background:#0f172a;color:#93c5fd}
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako_deflate.min.js"></script>
 </head>
 <body>
 
@@ -1782,44 +1783,22 @@ async function genShareLink(){
   urlBox.style.display = 'none';
   qrWrap.innerHTML = '<span style="font-size:12px;color:var(--muted)">產生中…</span>';
 
+
   // ── 壓縮 payload → Base64url，完全不依賴 Firebase 寫入 ──
-  // 使用瀏覽器內建 CompressionStream (deflate-raw)，無需外部套件
+  // 使用 pako.js deflateRaw（同步，可靠）
   let dataParam;
   try {
-    const json  = JSON.stringify(payload);
-    const bytes = new TextEncoder().encode(json);
-    // CompressionStream: Chrome 80+, Firefox 113+, Safari 16.4+
-    const cs     = new CompressionStream('deflate-raw');
-    const writer = cs.writable.getWriter();
-    writer.write(bytes);
-    writer.close();
-    const buf = await new Response(cs.readable).arrayBuffer();
-    const compressed = new Uint8Array(buf);
-    // 用 chunk loop 轉 Base64，避免大資料時 spread operator 造成 stack overflow
+    const json       = JSON.stringify(payload);
+    const compressed = pako.deflateRaw(json);   // Uint8Array
     let b64 = '';
     const CHUNK = 8192;
     for(let i = 0; i < compressed.length; i += CHUNK){
       b64 += String.fromCharCode(...compressed.subarray(i, i + CHUNK));
     }
-    b64 = btoa(b64);
-    dataParam = b64.replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+    dataParam = btoa(b64).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
   } catch(e) {
-    // fallback：直接 Base64（不壓縮）
-    try {
-      const json  = JSON.stringify(payload);
-      const bytes = new TextEncoder().encode(json);
-      let b64 = '';
-      const CHUNK = 8192;
-      for(let i = 0; i < bytes.length; i += CHUNK){
-        b64 += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-      }
-      b64 = btoa(b64);
-      dataParam = 'R' + b64.replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,''); // R prefix = raw (no compress)
-      statusEl.textContent = '⚠️ 壓縮不支援，使用標準模式';
-    } catch(e2) {
-      statusEl.textContent = '❌ 產生失敗：' + e2.message;
-      toast('產生失敗','err'); return;
-    }
+    statusEl.textContent = '❌ 產生失敗：' + e.message;
+    toast('產生失敗','err'); return;
   }
 
   // 嘗試同步 Firebase state（讓面試即時同步用），失敗不影響 QR Code
