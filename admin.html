@@ -1,5 +1,4 @@
-
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
@@ -465,6 +464,7 @@ html[data-dark="1"] .smod-url{background:#0f172a;color:#93c5fd}
 </style>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -594,6 +594,7 @@ html[data-dark="1"] .smod-url{background:#0f172a;color:#93c5fd}
     <div style="display:flex;gap:10px;flex-wrap:wrap">
       <button class="btn btn-warn btn-lg" id="advBtn" onclick="advanceStage()">🚩 進入第二階段</button>
       <button class="btn btn-lg" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.45)" onclick="resetAll()">🔄 重置系統</button>
+      <button class="btn btn-lg" style="background:#276749;color:#fff;border:1px solid #38a169" onclick="exportMatchExcel()">📊 匯出媒合名單 Excel</button>
     </div>
   </div>
 
@@ -1842,6 +1843,119 @@ function fallbackCopy(text, cb){
   document.body.appendChild(el); el.select();
   try{ document.execCommand('copy'); cb(); }catch{}
   document.body.removeChild(el);
+}
+
+// ══════════════════════════════════════════════════
+//  EXPORT MATCH EXCEL
+//  以「最後媒合成功狀態」為準輸出（過程中誤按不影響結果）
+//  兩階段資訊皆收錄；未媒合成功顯示當天未媒合成功
+// ══════════════════════════════════════════════════
+function exportMatchExcel(){
+  if(!S||!S.students||!S.companies){
+    toast('尚無資料可匯出','err');return;
+  }
+
+  // 從 log 解析每位學生的「最後一次媒合成功」記錄（包含哪個廠商、哪個階段）
+  // log 格式：「🎉 廠商名 × 座號號 學生名 媒合成功！」
+  // 以時間順序由舊到新，後面的覆蓋前面的，確保取最後一次媒合
+  const logArr = [...(S.log||[])].reverse(); // log[0] 是最新，reverse 後從舊到新
+  // 建立 stage 切換時間點（從 log 找 "第二階段" 的記錄）
+  // log 順序：最新在前，我們直接用 S.statuses 的最終狀態，同時從 log 推斷是哪個階段媒合
+  // 策略：先掃 log（舊→新），找出每個 sid 最後一次媒合成功的 log，
+  //       再比對相鄰 log 中是否有「第二階段開始」的記錄來判斷階段
+
+  // 解析「媒合成功」log 項目
+  // log 格式示例：「🎉 廠商A × 05號 王小明 媒合成功！」
+  const matchPattern = /🎉\s*(.+?)\s*×\s*(\d+)號\s*(.+?)\s*媒合成功/;
+  const stage2Pattern = /第二階段/;
+
+  // log 陣列：S.log[0] = 最新，S.log[last] = 最舊
+  // 找到「第二階段開始」在 log 中的 index（若有）
+  const logs = S.log || [];
+  const stage2LogIdx = logs.findIndex(l => stage2Pattern.test(l.msg));
+  // stage2LogIdx === -1 表示沒有進入第二階段
+  // logs[0] 最新，logs[stage2LogIdx] 是第二階段開始的那筆（較舊）
+
+  // 對每位學生，找「最後一次媒合成功」的 log（logs[0] 最新 → 取第一個符合的就是最後一次）
+  const matchedMap = {}; // sid -> { coName, stage }
+  logs.forEach((l, idx) => {
+    const m = l.msg.match(matchPattern);
+    if(!m) return;
+    const cname = m[1].trim();
+    const sid = m[2].padStart(2,'0');
+    if(matchedMap[sid]) return; // 已記錄過（較新的已優先）
+    // 判斷階段：idx 比 stage2LogIdx 小 = 較新的 log，比它大 = 較舊
+    // stage2LogIdx === -1 → 全都是第一階段
+    let stage = 1;
+    if(stage2LogIdx !== -1 && idx > stage2LogIdx){
+      stage = 1; // 比第二階段開始還舊 → 第一階段
+    } else if(stage2LogIdx !== -1 && idx <= stage2LogIdx){
+      stage = 2; // 第二階段開始之後（較新的 log）→ 第二階段
+    }
+    matchedMap[sid] = { coName: cname, stage };
+  });
+
+  // 以 S.statuses 最終狀態為輔助驗證，確保未取消媒合
+  // 若 statuses 顯示已媒合，以 matchedMap 為主；若 statuses 顯示未媒合，忽略 log（表示已取消）
+  const today = new Date();
+  const dateStr = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+  const displayDate = `${today.getFullYear()}/${String(today.getMonth()+1).padStart(2,'0')}/${String(today.getDate()).padStart(2,'0')}`;
+
+  // ── 工作表 1：所有學生媒合結果（含未媒合） ──
+  const allRows = [];
+  allRows.push(['座號', '姓名', '媒合廠商', '媒合階段', '備註']);
+  S.students.forEach(s => {
+    const finalSt = sts(s.id);
+    const isMatched = finalSt.s === 'matched';
+    if(isMatched){
+      // 最終已媒合：使用最後媒合的廠商（以 statuses 的 mw 為準，最準確）
+      const finalCo = S.companies.find(c => c.id === finalSt.mw);
+      const finalCoName = finalCo ? finalCo.name : (matchedMap[s.id]?.coName || finalSt.mw);
+      const stageInfo = matchedMap[s.id]?.stage || '—';
+      allRows.push([s.id, s.name, finalCoName, `第${stageInfo}階段`, '媒合成功']);
+    } else {
+      allRows.push([s.id, s.name, '—', '—', `${displayDate} 當天未媒合成功`]);
+    }
+  });
+
+  // ── 工作表 2：僅媒合成功名單（依廠商分組） ──
+  const matchedRows = [];
+  matchedRows.push(['廠商', '座號', '姓名', '媒合階段']);
+  S.companies.forEach(co => {
+    const coStudents = S.students.filter(s => {
+      const st = sts(s.id);
+      return st.s === 'matched' && st.mw === co.id;
+    });
+    if(!coStudents.length) return;
+    coStudents.forEach(s => {
+      const stageInfo = matchedMap[s.id]?.stage || '—';
+      matchedRows.push([co.name, s.id, s.name, `第${stageInfo}階段`]);
+    });
+  });
+
+  // 若無任何媒合成功
+  if(matchedRows.length === 1){
+    matchedRows.push([`${displayDate} 當天未有任何媒合成功`, '', '', '']);
+  }
+
+  // ── 建立 Workbook ──
+  const wb = XLSX.utils.book_new();
+
+  // 工作表 1
+  const ws1 = XLSX.utils.aoa_to_sheet(allRows);
+  ws1['!cols'] = [{wch:8},{wch:12},{wch:20},{wch:10},{wch:22}];
+  // 標題列樣式
+  XLSX.utils.book_append_sheet(wb, ws1, '全部學生媒合結果');
+
+  // 工作表 2
+  const ws2 = XLSX.utils.aoa_to_sheet(matchedRows);
+  ws2['!cols'] = [{wch:20},{wch:8},{wch:12},{wch:10}];
+  XLSX.utils.book_append_sheet(wb, ws2, '媒合成功名單');
+
+  // ── 匯出 ──
+  const filename = `媒合結果_${dateStr}.xlsx`;
+  XLSX.writeFile(wb, filename);
+  toast(`已匯出：${filename}`,'ok');
 }
 </script>
 
